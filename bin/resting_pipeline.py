@@ -1100,8 +1100,8 @@ class RestPipe:
                     xidx = sigx[idx] + 1
                     yidx = sigy[idx] + 1
                     G.add_edge(xidx,yidx)
-                    G.edge[xidx][yidx]['zrvalue'] = zrval
-                    G.edge[xidx][yidx]['rvalue'] = rval
+                    G.edges[xidx, yidx]['zrvalue'] = zrval
+                    G.edges[xidx, yidx]['rvalue'] = rval
 
             B = nx.Graph.to_undirected(G)
             nx.write_graphml(B,graphml,encoding='utf-8', prettyprint=True)
