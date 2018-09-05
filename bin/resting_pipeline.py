@@ -1021,7 +1021,7 @@ class RestPipe:
         kernel_sigma = kernel_width/2.3548 
        
         #apply smoothing
-        thisprocstr = str("fslmaths " +  self.thisnii + " -kernel gauss " + kernel_sigma + " -fmean " + newfile)
+        thisprocstr = str("fslmaths " +  self.thisnii + " -kernel gauss " + str(kernel_sigma) + " -fmean " + newfile)
         logging.info('running: ' + thisprocstr)
         subprocess.Popen(thisprocstr,shell=True).wait()
      
