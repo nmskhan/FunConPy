@@ -948,7 +948,7 @@ class RestPipe:
 
         #build filter
         time_all = np.arange(0,(self.tdim*(self.tr_ms/1000))-.001,.001)
-        time_subTR = time_all[0:-1:self.tr_ms]
+        time_subTR = time_all[0:-1:int(self.tr_ms)]
         length = len(time_subTR)
         ccc = 1.0/(self.tr_ms/1000)/length
         cccc = freq_cutoff/ccc
@@ -956,7 +956,7 @@ class RestPipe:
         len2 = round(length/2.0+(cccc+1))
 
         tmp = np.zeros([self.tdim,1])
-        tmp[len1:len2]=1
+        tmp[int(len1):int(len2)]=1
         tmpMA = len1-4
         tmpMA2 = round(tmpMA/2)
         tmpAB = np.divide(np.add(1,np.cos(np.arange(np.pi, 2*np.pi+((np.pi/tmpMA)/2), np.pi/tmpMA))),2)
