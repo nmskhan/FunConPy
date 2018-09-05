@@ -978,9 +978,11 @@ class RestPipe:
         data_lowpass = data1
         del data1
         # in-place (-=, *=) operations should save memory
-        data_lowpass += tmp_mean.reshape(tmp_mean.shape + (1,))
+        #data_lowpass += tmp_mean.reshape(tmp_mean.shape + (1,))
+        np.add(data_lowpass, tmp_mean.reshape(tmp_mean.shape + (1,)), out=data_lowpass, casting="unsafe")
         data_lowpass -=  np.min(data_lowpass)
-        data_lowpass *= 30000.0 / np.max(data_lowpass)
+        # data_lowpass *= 30000.0 / np.max(data_lowpass)
+        np.multiply(data_lowpass, 30000.0 / np.max(data_lowpass), out=data_lowpass, casting="unsafe")
 
         newNii = nibabel.Nifti1Pair(data_lowpass,None,data.get_header())
         nibabel.save(newNii,newfile)
