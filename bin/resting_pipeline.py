@@ -129,15 +129,15 @@ class RestPipe:
             elif i == '6':
                 self.step6()
             elif i == '7':
-                self.step6a()
-            elif i == '8a':
-                self.step7a()
-            elif i == '8b':
-                self.step7b()
-            elif i == '8':
                 self.step7()
-            elif i == '9':
+            elif i == '8a':
+                self.step8a()
+            elif i == '8b':
+                self.step8b()
+            elif i == '8':
                 self.step8()
+            elif i == '9':
+                self.step9()
 
         if options.cleanup is not None:
             self.cleanup()
