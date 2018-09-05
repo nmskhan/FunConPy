@@ -944,7 +944,7 @@ class RestPipe:
             logging.info('WM/CSF regression failed')
             raise SystemExit()
 
-    #lowpass filter
+    #bandpass filter
     def step6(self):
         logging.info('bandpass filtering data')
         newprefix = "filt_" + self.prefix
