@@ -962,11 +962,11 @@ class RestPipe:
         #build filter
         F = np.zeros((timepoints))
         lowidx = int(timepoints / 2) + 1
-        if lowpass_freq > 0:
-            lowidx = np.round(float(lowpass_freq) / fs * timepoints)
+        if lp_freq > 0:
+            lowidx = np.round(float(lp_freq) / fs * timepoints)
         highidx = 0
-        if highpass_freq > 0:
-            highidx = np.round(float(highpass_freq) / fs * timepoints)
+        if hp_freq > 0:
+            highidx = np.round(float(hp_freq) / fs * timepoints)
         F[highidx:lowidx] = 1
         F = ((F + F[::-1]) > 0).astype(int)
         data = img.get_data()
