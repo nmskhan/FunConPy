@@ -967,7 +967,7 @@ class RestPipe:
         highidx = 0
         if hpfreq > 0:
             highidx = np.round(float(hpfreq) / fs * timepoints)
-        F[highidx:lowidx] = 1
+        F[int(highidx):int(lowidx)] = 1
         F = ((F + F[::-1]) > 0).astype(int)
         data = img.get_data()
         if np.all(F == 1):
@@ -975,7 +975,7 @@ class RestPipe:
         else:
             filtered_data = np.real(np.fft.ifftn(np.fft.fftn(data) * F))
 
-        newNii = nibabel.Nifti1Pair(filtered_data,None,data.get_header())
+        newNii = nibabel.Nifti1Pair(filtered_data,None,img.get_header())
         nibabel.save(newNii,newfile)
 
         if os.path.isfile(newfile):
