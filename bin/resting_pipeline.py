@@ -44,15 +44,15 @@ Program to run through Nan-kuei Chen's resting state analysis pipeline:
     4 - normalize data
     5 - regress out WM/CSF
     6 - lowpass filter
-    6b - FWHM smoothing
-    7 - do parcellation and produce correlation matrix from label file
+    7 - FWHM smoothing
+    8 - do parcellation and produce correlation matrix from label file
       * or split it up:
-         7a - do parcellation from label file
-         7b - produce correlation matrix [--func option is ignored if step 7b
+         8a - do parcellation from label file
+         8b - produce correlation matrix [--func option is ignored if step 7b
               is run by itself unless --dvarsthreshold is specified, and
               --corrts overrides default location for input parcellation
               results (outputpath/corrlabel_ts.txt)]
-    8 - functional connectivity density mapping
+    9 - functional connectivity density mapping
 
 """
 
