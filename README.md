@@ -1,7 +1,7 @@
 # biac-analysis-resting_pipeline
 Python/FSL Resting State Pipeline
 
-
+This pipeline is a collection of steps that can be used to process a single subject's resting state data from raw into a node based correlation matrix representing connectivity between different regions of the brain.
 
 
 # Install
