@@ -284,8 +284,9 @@ class RestPipe:
         else:
             self.flirtmat = None
 
-        #grab low-pass filter input
+        #grab band-pass filter input
         self.lpfreq = options.lpfreq
+        self.hpfreq = options.hpfreq
 
         #f value to use in bet for skull stripping
         self.betfval = options.betfval
