@@ -50,7 +50,11 @@ Band-pass filter data to remove high-frequency noise using custom python code:
 The default lowpass is 0.08 HZ
 Highpass is fixed at .001 HZ
 
-**Step 7**
+**Step 8**
+Smooth data with a FWHM gaussian kernel.
+The default width is 5mm.
+
+**Step 8**
 if defaults are used, then the aal_MNI_V4 label file is used to extract the average timeseries for each of the 116 regions of the Automated Anatomical Labelling Atlas. If you want to provide your own label file, the –corrlabel option can be used. The input to this step would be a 3D image of ROIs the same size as your normalized data. Each individual ROI needs to have a unique intensity value for the timecourse extraction.
 
 This step produces 4 files:
@@ -60,7 +64,7 @@ This step produces 4 files:
 “zr_matrix.nii.gz”: normalized correlation coefficients
 “mask_matrix.nii.gz”: an inclusion mask for everything below the intersect of the regions.
 
-**Step 8**
+**Step 9**
 Functional connectivity density mapping
 Takes functional data from last step and calculates how connected they are to the voxels around them. Adapted from Dardo Tomasi, PNAS(2010), vol. 107, no. 21. 9885–9890
 
