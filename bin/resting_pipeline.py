@@ -1044,7 +1044,8 @@ class RestPipe:
             myres = np.nan_to_num(myres)
             
             #convert corcoef
-            zrmaps = 0.5*np.log((1+myres)/(1-myres))
+            with np.errstate(divide='ignore'):
+                zrmaps = 0.5*np.log(np.divide((1+myres),(1-myres)))
             #find the inf vals on diagonal
             infs = (zrmaps == np.inf).nonzero()
 
