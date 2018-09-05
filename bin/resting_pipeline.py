@@ -1024,14 +1024,14 @@ class RestPipe:
      
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
-                    self.toclean.append( self.thisnii )
-                self.prevprefix = self.prefix
-                self.prefix = newprefix
-                self.thisnii = newfile
-                logging.info('smoothing completed: ' + self.thisnii )
-            else:
-                logging.info('smoothing failed')
-                raise SystemExit() 
+                self.toclean.append( self.thisnii )
+            self.prevprefix = self.prefix
+            self.prefix = newprefix
+            self.thisnii = newfile
+            logging.info('smoothing completed: ' + self.thisnii )
+        else:
+            logging.info('smoothing failed')
+            raise SystemExit() 
      
     #do the parcellation and correlation
     def step8(self):
