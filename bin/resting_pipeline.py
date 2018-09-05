@@ -253,7 +253,10 @@ class RestPipe:
             else:
                 logging.info("Please provide --tr option when starting from nifti, we don't trust TR derrived from existing nifti files.")
                 raise SystemExit()
-
+        
+        
+        #grab FWHM 
+        self.fwhm = options.fwhm
 
         #grab correlation label, or assign the AAL brain
         if options.corrlabel is not None:
