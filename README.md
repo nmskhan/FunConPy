@@ -7,7 +7,7 @@ This pipeline is a collection of steps that can be used to process a single subj
 # Install
 
 Source files assume you have a working install of Python2.7, FSL, and all imported python modules.
-Python modules are numpy, nibabel, scipy, and networkx.
+Python modules are numpy, nibabel, scipy, networkx and nipype.
 
 Needs a working install of the [BIRN BXH/Xcede tools](https://www.nitrc.org/projects/bxh_xcede_tools/).
 
