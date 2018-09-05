@@ -10,4 +10,4 @@ fcdm algorithm adapted from Dardo Tomasi, PNAS(2010), vol. 107, no. 21. 9885–9
 Source files assume you have a working install of Python2.7, FSL, and all imported python modules.
 Python modules are numpy, nibabel, scipy, and networkx
 
-Needs a working install of the [BIRN BXH/Xcede tools] (https://www.nitrc.org/projects/bxh_xcede_tools/).
+Needs a working install of the [BIRN BXH/Xcede tools](https://www.nitrc.org/projects/bxh_xcede_tools/).
