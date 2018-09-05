@@ -968,8 +968,8 @@ class RestPipe:
         tmpBA = np.divide(np.add(1,np.cos(np.arange(2*np.pi,np.pi-((np.pi/tmpMA)/2), -np.pi/tmpMA))),2)
         tmpBA = tmpBA.reshape(tmpBA.shape[0],1)
         
-        tmp[(len1-tmpMA+tmpMA2)-1:len1+tmpMA2]=tmpAB
-        tmp[(len2-tmpMA2)-1:len2+tmpMA-tmpMA2]=tmpBA
+        tmp[int((len1-tmpMA+tmpMA2)-1):int(len1+tmpMA2)]=tmpAB
+        tmp[int((len2-tmpMA2)-1):int(len2+tmpMA-tmpMA2)]=tmpBA
 
         tmp_mean = np.mean(data1, axis=3)
         # go slice-by-slice
