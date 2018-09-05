@@ -947,7 +947,7 @@ class RestPipe:
     #bandpass filter
     def step6(self):
         logging.info('bandpass filtering data')
-        newprefix = "filt_" + self.prefix
+        newprefix = self.prefix + "_filt"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
   
         lpfreq = self.lpfreq        
