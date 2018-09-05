@@ -44,6 +44,7 @@ Program to run through Nan-kuei Chen's resting state analysis pipeline:
     4 - normalize data
     5 - regress out WM/CSF
     6 - lowpass filter
+    6b - FWHM smoothing
     7 - do parcellation and produce correlation matrix from label file
       * or split it up:
          7a - do parcellation from label file
@@ -70,6 +71,7 @@ parser.add_option("--refwm",  action="store", type="string", dest="refwm",help="
 parser.add_option("--refcsf",  action="store", type="string", dest="refcsf",help="pointer to CSF mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refgm",  action="store", type="string", dest="refgm",help="pointer to GM mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refbrainmask",  action="store", type="string", dest="refbrainmask",help="pointer to brain mask of reference image if not using standard brain", metavar="FILE")
+parser.add_option("--fwhm",  action="store", type="int", dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
 parser.add_option("--refacpoint",  action="store", type="string", dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
 parser.add_option("--betfval",  action="store", type="float", dest="betfval",help="f value to use while skull stripping. default is 0.4", metavar="0.4", default='0.4')
 parser.add_option("--anatbetfval",  action="store", type="float", dest="anatbetfval",help="f value to use while skull stripping ANAT. default is 0.5", metavar="0.5", default='0.5')
@@ -126,13 +128,15 @@ class RestPipe:
                 self.step5()
             elif i == '6':
                 self.step6()
-            elif i == '7a':
-                self.step7a()
-            elif i == '7b':
-                self.step7b()
             elif i == '7':
-                self.step7()
+                self.step6a()
+            elif i == '8a':
+                self.step7a()
+            elif i == '8b':
+                self.step7b()
             elif i == '8':
+                self.step7()
+            elif i == '9':
                 self.step8()
 
         if options.cleanup is not None:
@@ -142,7 +146,7 @@ class RestPipe:
     def initialize(self):
          #if all was defined, set those steps
         if (options.steps == 'all'):
-            self.steps = ['0','1','2','3','4','5','6','7','8']
+            self.steps = ['0','1','2','3','4','5','6','7','8','9']
         else:
             #convert unicode str, push into obj
             self.steps = options.steps.split(',')
@@ -1003,15 +1007,39 @@ class RestPipe:
         else:
             logging.info('lowpass filtering failed')
             raise SystemExit()
-
-
-    #do the parcellation and correlation
+           
+    #FWMH Smoothing
     def step7(self):
-        self.step7a()
-        self.step7b()
+        logging.info('smoothing data')
+        newprefix = "smooth_" + self.prefix
+        newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
+     
+        kernel_width = self.fwhm       
+        kernel_sigma = kernel_width/2.3548 
+       
+        #apply smoothing
+        thisprocstr = str("fslmaths " +  self.thisnii + " -kernel gauss " + kernel_sigma + " -fmean " + newfile)
+        logging.info('running: ' + thisprocstr)
+        subprocess.Popen(thisprocstr,shell=True).wait()
+     
+        if os.path.isfile(newfile):
+            if self.prevprefix is not None:
+                    self.toclean.append( self.thisnii )
+                self.prevprefix = self.prefix
+                self.prefix = newprefix
+                self.thisnii = newfile
+                logging.info('smoothing completed: ' + self.thisnii )
+            else:
+                logging.info('smoothing failed')
+                raise SystemExit() 
+     
+    #do the parcellation and correlation
+    def step8(self):
+        self.step8a()
+        self.step8b()
         
     #do the parcellation
-    def step7a(self):
+    def step8a(self):
         logging.info('starting parcellation')
         corrtxt = os.path.join(self.outpath,'corrlabel_ts.txt')
 
@@ -1021,9 +1049,10 @@ class RestPipe:
         if not os.path.isfile(corrtxt):
             logging.info('could not create mean timeseries matrix file')
             raise SystemExit()
-
+           
+       
     #do the correlation
-    def step7b(self):
+    def step8b(self):
         logging.info('starting correlation')
         rmat = os.path.join(self.outpath,'r_matrix.nii.gz')
         rtxt = os.path.join(self.outpath,'r_matrix.csv')
@@ -1120,7 +1149,7 @@ class RestPipe:
 
 
     #fcdm
-    def step8(self):
+    def step9(self):
         import fcdm
         logging.info('starting functional connectivity density mapping')
 
