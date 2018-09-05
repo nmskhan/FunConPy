@@ -76,6 +76,7 @@ parser.add_option("--refacpoint",  action="store", type="string", dest="refac",h
 parser.add_option("--betfval",  action="store", type="float", dest="betfval",help="f value to use while skull stripping. default is 0.4", metavar="0.4", default='0.4')
 parser.add_option("--anatbetfval",  action="store", type="float", dest="anatbetfval",help="f value to use while skull stripping ANAT. default is 0.5", metavar="0.5", default='0.5')
 parser.add_option("--lpfreq",  action="store", type="float", dest="lpfreq",help="frequency cutoff for lowpass filtering in HZ.  default is .08hz", metavar="0.08", default='0.08')
+parser.add_option("--hpfreq",  action="store", type="float", dest="hpfreq",help="frequency cutoff for highpass filtering in HZ.  default is .01hz", metavar="0.01", default='0.01')
 parser.add_option("--corrlabel",  action="store", type="string", dest="corrlabel",help="pointer to 3D label containing ROIs for the correlation search. default is the 116 region AAL label file", metavar="FILE")
 parser.add_option("--corrtext",  action="store", type="string", dest="corrtext",help="pointer to text file containing names/indices for ROIs for the correlation search. default is the 116 region AAL label txt file", metavar="FILE")
 parser.add_option("--corrts",  action="store", type="string", dest="corrts",help="If using step 7b by itself, this is the path to parcellation output (default is to use OUTPATH/corrlabel_ts.txt), which will be used as input to the correlation.", metavar="FILE")
@@ -943,55 +944,36 @@ class RestPipe:
 
     #lowpass filter
     def step6(self):
-        logging.info('lowpass filtering data')
+        logging.info('bandpass filtering data')
         newprefix = "filt_" + self.prefix
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
   
-        freq_cutoff = self.lpfreq        
+        lpfreq = self.lpfreq        
+        hpfreq = self.hpfreq
+        #fs: sampling rate (in Hz)
+        fs = 1/(self.tr_ms/1000)
 
         #load nifti data
-        data = nibabel.nifti1.load(self.thisnii)
-        data1 = data.get_data()
+        img = nibabel.load(self.thisnii, nmap=NUMPY_NMAP)
+        timepoints = img.shape[-1]
 
         #build filter
-        time_all = np.arange(0,(self.tdim*(self.tr_ms/1000))-.001,.001)
-        time_subTR = time_all[0:-1:int(self.tr_ms)]
-        length = len(time_subTR)
-        ccc = 1.0/(self.tr_ms/1000)/length
-        cccc = freq_cutoff/ccc
-        len1 = round(length/2.0-(cccc-2))
-        len2 = round(length/2.0+(cccc+1))
+        F = np.zeros((timepoints))
+        lowidx = int(timepoints / 2) + 1
+        if lowpass_freq > 0:
+            lowidx = np.round(float(lowpass_freq) / fs * timepoints)
+        highidx = 0
+        if highpass_freq > 0:
+            highidx = np.round(float(highpass_freq) / fs * timepoints)
+        F[highidx:lowidx] = 1
+        F = ((F + F[::-1]) > 0).astype(int)
+        data = img.get_data()
+        if np.all(F == 1):
+            filtered_data = data
+        else:
+            filtered_data = np.real(np.fft.ifftn(np.fft.fftn(data) * F))
 
-        tmp = np.zeros([self.tdim,1])
-        tmp[int(len1):int(len2)]=1
-        tmpMA = len1-4
-        tmpMA2 = round(tmpMA/2)
-        tmpAB = np.divide(np.add(1,np.cos(np.arange(np.pi, 2*np.pi+((np.pi/tmpMA)/2), np.pi/tmpMA))),2)
-        tmpAB = tmpAB.reshape(tmpAB.shape[0],1)
-        tmpBA = np.divide(np.add(1,np.cos(np.arange(2*np.pi,np.pi-((np.pi/tmpMA)/2), -np.pi/tmpMA))),2)
-        tmpBA = tmpBA.reshape(tmpBA.shape[0],1)
-        
-        tmp[int((len1-tmpMA+tmpMA2)-1):int(len1+tmpMA2)]=tmpAB
-        tmp[int((len2-tmpMA2)-1):int(len2+tmpMA-tmpMA2)]=tmpBA
-
-        tmp_mean = np.mean(data1, axis=3)
-        # go slice-by-slice
-        for cntz in range(self.zdim):
-            tmp_data = data1[:,:,cntz,:]
-            arr_f = np.fft.fftshift(np.fft.fft(np.fft.fftshift(signal.detrend(tmp_data), axes=2), axis=2), axes=2)
-            arr_fc = np.multiply(arr_f, tmp.T)
-            yyy00 = np.real(np.fft.fftshift(np.fft.ifft(np.fft.fftshift(arr_fc, axes=2), axis=2), axes=2))
-            data1[:,:,cntz,:] = yyy00
-        data_lowpass = data1
-        del data1
-        # in-place (-=, *=) operations should save memory
-        #data_lowpass += tmp_mean.reshape(tmp_mean.shape + (1,))
-        np.add(data_lowpass, tmp_mean.reshape(tmp_mean.shape + (1,)), out=data_lowpass, casting="unsafe")
-        data_lowpass -=  np.min(data_lowpass)
-        # data_lowpass *= 30000.0 / np.max(data_lowpass)
-        np.multiply(data_lowpass, 30000.0 / np.max(data_lowpass), out=data_lowpass, casting="unsafe")
-
-        newNii = nibabel.Nifti1Pair(data_lowpass,None,data.get_header())
+        newNii = nibabel.Nifti1Pair(filtered_data,None,data.get_header())
         nibabel.save(newNii,newfile)
 
         if os.path.isfile(newfile):
@@ -1001,14 +983,14 @@ class RestPipe:
             self.prevprefix = self.prefix
             self.prefix = newprefix
             self.thisnii = newfile
-            logging.info('lowpass filtering successful: ' + self.thisnii )
+            logging.info('bandpass filtering successful: ' + self.thisnii )
 
             logging.info('creating mean image.')
             thisprocstr = str("fslmaths " + self.thisnii + " -Tmean filt_mean")
             logging.info('running: ' + thisprocstr)
             subprocess.Popen(thisprocstr,shell=True).wait()
         else:
-            logging.info('lowpass filtering failed')
+            logging.info('bandpass filtering failed')
             raise SystemExit()
            
     #FWMH Smoothing
