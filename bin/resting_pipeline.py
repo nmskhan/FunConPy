@@ -28,7 +28,6 @@ from optparse import OptionParser, OptionGroup
 import logging
 import math
 from scipy import ndimage as nd
-from nipype.utils.config import NUMPY_MMAP
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
@@ -956,7 +955,7 @@ class RestPipe:
         fs = 1/(self.tr_ms/1000)
 
         #load nifti data
-        img = nibabel.load(self.thisnii, nmap=NUMPY_MMAP)
+        img = nibabel.load(self.thisnii)
         timepoints = img.shape[-1]
 
         #build filter
