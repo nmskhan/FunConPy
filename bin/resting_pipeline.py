@@ -956,7 +956,7 @@ class RestPipe:
         fs = 1/(self.tr_ms/1000)
 
         #load nifti data
-        img = nibabel.load(self.thisnii, nmap=NUMPY_NMAP)
+        img = nibabel.load(self.thisnii, nmap=NUMPY_MMAP)
         timepoints = img.shape[-1]
 
         #build filter
