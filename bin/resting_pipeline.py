@@ -664,7 +664,8 @@ class RestPipe:
             self.thisnii = newfile + ".nii.gz"
             self.prevprefix = self.prefix
             self.prefix = newprefix
-            self.mcparams = newfile + ".par"             
+            self.mcparams = newfile + ".par"            
+	    self.mcparamsmat = newfile +".mat"
             logging.info('motion correction successful: ' + self.thisnii )
 
             thisprocstr = str("fsl_tsplot -i " + self.mcparams +  " -t 'MCFLIRT estimated rotations (radians)' -u 1 --start=1 --finish=3 -a x,y,z -w 640 -h 144 -o " + newfile + "_rot.png")
@@ -675,44 +676,19 @@ class RestPipe:
             subprocess.Popen(thisprocstr,shell=True).wait()
 
             logging.info('regressing out motion correction parameters')
+		
+            #convert mcflirt params
+            thisprocstr = str("Text2Vest " + self.mcparams + " " + self.mcparamsmat)
+            logging.info('running: ' + thisprocstr)
+            subprocess.Popen(thisprocstr,shell=True).wait()
 
-            #load mcflirt params
-            params = np.loadtxt(self.mcparams,unpack=True)
-            #load nifti data
-            data = nibabel.nifti1.load(self.thisnii)
-            data1 = data.get_data()
-
-            #create regressors
-            X = []
-            for index in range(6):
-                X.append(np.vstack([np.ones(self.tdim), params[index]]).T)
-            
-            logging.info('starting linear regression')
-            tmp_mean = np.mean(data1, axis=3)
-            shape = data1.shape
-            data1v = data1.reshape((shape[0]*shape[1], shape[2], shape[3])).transpose((1, 2, 0))
-            # data1v is a view in z, t, x*y order
-            # go slice-by-slice
-            for cntz in range(self.zdim):
-                tmp_data = data1v[cntz]
-                for index in range(6):
-                    p0 = np.linalg.lstsq(X[index], tmp_data)[0]
-                    p00 = np.dot(X[index], p0) #product
-                    tmp_data = tmp_data - p00
-                data1v[cntz] = tmp_data
-
-            data_mr = data1v.transpose((2, 0, 1)).reshape(shape)
-            del data1v
-            del data1
-            # in-place (-=, *=) operations should save memory
-            data_mr += tmp_mean.reshape(tmp_mean.shape + (1,))
-            data_mr -= np.min(data_mr)
-            data_mr *= 30000.0 / np.max(data_mr)
-            newNii = nibabel.Nifti1Pair(data_mr,None,data.get_header())
-
+            #regress out data
             newprefix = self.prefix + 'r'
             newfile = os.path.join(self.outpath, (newprefix + ".nii.gz"))
-            nibabel.save(newNii,newfile)
+            thisprocstr = str("fsl_glm -i " + self.thisnii + " -d " + self.mcparamsmat + " --out_res=" + newfile)
+            logging.info('running: ' + thisprocstr)
+            subprocess.Popen(thisprocstr,shell=True).wait()
+            
             if os.path.isfile(newfile):
                 if self.prevprefix is not None:
                     self.toclean.append( self.thisnii )
