@@ -126,6 +126,7 @@ Options:
                         standard brain
   --refbrainmask=FILE   pointer to brain mask of reference image if not using
                         standard brain
+  --fwhm=5              FWHM kernel smoothing in mm. default is 5mm
   --refacpoint=45,63,36
                         AC point of reference image if not using standard MNI
                         brain
@@ -133,7 +134,9 @@ Options:
   --anatbetfval=0.5     f value to use while skull stripping ANAT. default is
                         0.5
   --lpfreq=0.08         frequency cutoff for lowpass filtering in HZ.  default
-                        is .08hz.  highpass is fixed at .001hz.
+                        is .08hz
+  --hpfreq=0.01         frequency cutoff for highpass filtering in HZ.  default
+                        is .01hz
   --corrlabel=FILE      pointer to 3D label containing ROIs for the
                         correlation search. default is the 116 region AAL
                         label file
