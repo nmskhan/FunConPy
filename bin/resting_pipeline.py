@@ -19,6 +19,8 @@
 import numpy as np
 import numpy.ma
 import nibabel
+import nipype
+from nipype.interfaces import afni
 from scipy import signal
 import os, sys, subprocess
 import string, random
@@ -27,7 +29,6 @@ import networkx as nx
 from optparse import OptionParser, OptionGroup
 import logging
 import math
-from nipype.utils.config import NUMPY_MMAP
 from scipy import ndimage as nd
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
@@ -949,34 +950,11 @@ class RestPipe:
         logging.info('bandpass filtering data')
         newprefix = self.prefix + "_filt"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
-  
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
-        #fs: sampling rate (in Hz)
-        fs = 1/(self.tr_ms/1000)
 
-        #load nifti data
-        img = nibabel.load(self.thisnii, mmap=NUMPY_MMAP)
-        timepoints = img.shape[-1]
-
-        #build filter
-        F = np.zeros((timepoints))
-        lowidx = int(timepoints / 2) + 1
-        if lpfreq > 0:
-            lowidx = np.round(float(lpfreq) / fs * timepoints)
-        highidx = 0
-        if hpfreq > 0:
-            highidx = np.round(float(hpfreq) / fs * timepoints)
-        F[int(highidx):int(lowidx)] = 1
-        F = ((F + F[::-1]) > 0).astype(int)
-        data = img.get_data()
-        if np.all(F == 1):
-            filtered_data = data
-        else:
-            filtered_data = np.real(np.fft.ifftn(np.fft.fftn(data) * F))
-
-        newNii = nibabel.Nifti1Pair(filtered_data,None,img.get_header())
-        nibabel.save(newNii,newfile)
+	       bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile)
+	       bandpass.run()
 
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
