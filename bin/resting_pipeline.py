@@ -849,7 +849,7 @@ class RestPipe:
             logging.info('normalization failed.')
             raise SystemExit()
 
-    #regress out WM/CSF
+   #regress out WM/CSF
     def step5(self):
         logging.info('regressing out WM/CSF signal ')
         newprefix = self.prefix + '_wmcsf'
@@ -876,39 +876,28 @@ class RestPipe:
                 logging.info('could not extract timeseries, quitting: ' + fname)
                 raise SystemExit()
 
+        self.wmcsfparams = newfile + ".par"
+        self.wmcsfparamsmat = newfile +".mat"
+
 
         wm_ts = np.loadtxt(wmout,unpack=True)
         csf_ts = np.loadtxt(csfout,unpack=True)
+        wm_csf_ts = np.stack((wm_ts, csf_ts),axis=1)
+        np.savetxt(self.wmcsfparams, wm_csf_ts)
 
-        X_wm = np.vstack([np.ones(self.tdim), wm_ts]).T
-        X_csf = np.vstack([np.ones(self.tdim), csf_ts]).T
+        
+        #convert wm+csf param to .mat file
+        thisprocstr = str("Text2Vest " + self.wmcsfparams + " " + self.wmcsfparamsmat)
+        logging.info('running: ' + thisprocstr)
+        subprocess.Popen(thisprocstr,shell=True).wait()
 
-        logging.info('starting linear regression')
-        tmp_mean = np.mean(data1, axis=3)
-        shape = data1.shape
-        data1v = data1.reshape((shape[0]*shape[1], shape[2], shape[3])).transpose((1, 2, 0))
-        # data1v is a view in z, t, x*y order
-        # go slice-by-slice
-        for cntz in range(self.zdim):
-            tmp_data = data1v[cntz]
-            # regress wm
-            p01 = np.linalg.lstsq(X_wm, tmp_data)[0]
-            p001 = np.dot(X_wm, p01) #product
-            tmp02 = tmp_data - p001
-            # regress csf
-            p02 = np.linalg.lstsq(X_csf, tmp02)[0]
-            p002 = np.dot(X_csf, p02) #product
-            tmp03 = tmp02 - p002
-            data1v[cntz] = tmp03
 
-        data_mr = data1v.transpose((2, 0, 1)).reshape(shape)
-        del data1v
-        del data1
-        data_mr += tmp_mean.reshape(tmp_mean.shape + (1,))
-        data_mr -= np.min(data_mr)
-        data_mr *= 30000.0 / np.max(data_mr)
-        newNii = nibabel.Nifti1Pair(data_mr,None,data.get_header())
-        nibabel.save(newNii,newfile)
+        #regress out data
+        newprefix = self.prefix + 'r'
+        newfile = os.path.join(self.outpath, (newprefix + ".nii.gz"))
+        thisprocstr = str("fsl_glm -i " + self.thisnii + " -d " + self.wmcsfparamsmat + " --out_res=" + newfile)
+        logging.info('running: ' + thisprocstr)
+        subprocess.Popen(thisprocstr,shell=True).wait()
 
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
@@ -920,7 +909,7 @@ class RestPipe:
         else:
             logging.info('WM/CSF regression failed')
             raise SystemExit()
-
+		
     #bandpass filter
     def step6(self):
         logging.info('bandpass filtering data')
