@@ -918,8 +918,8 @@ class RestPipe:
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
 
-	       bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile)
-	       bandpass.run()
+	bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile)
+	bandpass.run()
 
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
