@@ -6,12 +6,10 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
-
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
@@ -36,7 +34,6 @@ logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%
 
 usage ="""
 resting_pipeline.py --func /path/to/run4.bxh --steps all --outpath /here/ -p func
-
 Program to run through Nan-kuei Chen's resting state analysis pipeline:
     steps:
     0 - convert data to nii in LAS orientation ( we suggest LAS if you are skipping this step )
@@ -55,7 +52,6 @@ Program to run through Nan-kuei Chen's resting state analysis pipeline:
               --corrts overrides default location for input parcellation
               results (outputpath/corrlabel_ts.txt)]
     9 - functional connectivity density mapping
-
 """
 
 parser = OptionParser(usage=usage)
@@ -109,7 +105,7 @@ if '-h' in sys.argv:
 
     raise SystemExit()
 if not (options.funcfile) or '-help' in sys.argv:
-    print "Input file ( --func ) is required to begin. Try --help "
+    print("Input file ( --func ) is required to begin. Try --help ")
     raise SystemExit()
 
 class RestPipe:
@@ -165,7 +161,7 @@ class RestPipe:
         self.thisnii = None
         if options.funcfile is not None and self.needfunc:
             if not ( os.path.isfile(options.funcfile)):
-                print "File does not exist: " + options.funcfile
+                print("File does not exist: " + options.funcfile)
                 raise SystemExit()
             else:
                 self.origbxh = str(options.funcfile)
@@ -175,7 +171,7 @@ class RestPipe:
         self.t1nii = None
         if options.anatfile is not None:
             if not ( os.path.isfile(options.anatfile)):
-                print "File does not exist: " + options.anatfile
+                print("File does not exist: " + options.anatfile)
                 raise SystemExit()
             else:
                 fileExt = os.path.splitext(options.anatfile)[-1]
@@ -186,7 +182,9 @@ class RestPipe:
                     thisproc = subprocess.Popen(["fslwrapbxh " + self.t1nii],shell=True).wait()
                     if os.path.isfile(self.t1nii.split('.')[0] + '.nii.gz'):
                         self.t1bxh = self.t1nii.split('.')[0] + '.nii.gz'
-
+                    elif os.path.isfile(self.t1nii.split('.')[0] + '.nii'):
+                        self.t1bxh = self.t1nii.split('.')[0] + '.nii'
+    
 
         if options.prefix is not None:
             self.prefix = str(options.prefix)
@@ -216,10 +214,10 @@ class RestPipe:
             for fname in [options.refwm, options.refcsf, options.flirtref, options.refbrainmask]:
                 if fname is not None:
                     if not ( os.path.isfile(fname) ):
-                        print "File does not exist: " + fname
+                        print("File does not exist: " + fname)
                         raise SystemExit()
                 else:
-                    print "If using nonstandard reference, CSF and WM masks are required. Try --help"
+                    print("If using nonstandard reference, CSF and WM masks are required. Try --help")
                     raise SystemExit()
 
             logging.info('Using ' + options.refac + ' for AC point/centroid calculation')
@@ -264,10 +262,10 @@ class RestPipe:
         #grab correlation label, or assign the AAL brain
         if options.corrlabel is not None:
             if not ( os.path.isfile(options.corrlabel) ):
-                print "File does not exist: " + options.corrlabel
+                print("File does not exist: " + options.corrlabel)
                 raise SystemExit()
             elif not ( os.path.isfile(options.corrtext) ):
-                print "File does not exist: " + options.corrtext
+                print("File does not exist: " + options.corrtext)
                 raise SystemExit()            
             else:
                 self.corrlabel = str(options.corrlabel)
@@ -279,7 +277,7 @@ class RestPipe:
         #a pre-defined flirt matrix for normalization
         if options.flirtmat is not None:
             if not ( os.path.isfile(options.flirtmat) ):
-                print "File does not exist: " + options.flirtmat
+                print("File does not exist: " + options.flirtmat)
                 raise SystemExit()
             else:
                 self.flirtmat = str(options.flirtmat)
@@ -362,74 +360,10 @@ class RestPipe:
         #if these aren't defined by options they get default values
         for fname in [self.flirtref, self.refwm, self.refcsf, self.corrlabel]:
             if not os.path.isfile(fname):
-                print "File does not exist: " + fname
+                print("File does not exist: " + fname)
                 raise SystemExit()
 
-
-        #parse the bxh to get some values
-        if self.origbxh is not None:
-            popenobj = subprocess.Popen(['dumpheader', self.origbxh], stdout=subprocess.PIPE)
-            (stdoutdata, stderrdata) = popenobj.communicate()
-            lines = stdoutdata.splitlines()
-            for line in lines:
-                willrotate = False
-                mobj = re.search("Dimension.*\((\w)\):\s*([-0-9.]+)(\S+) to ([-0-9.]+)(\S+), ([0-9]+) steps(, direction \(([-0-9.]+), ([-0-9.]+), ([-0-9.]+)\))?", line)
-                if mobj:
-                    (dimname, firstpos, firstunits, lastpos, lastunits, numsteps, dirclause, dirR, dirA, dirS) = mobj.groups()
-                    if '0' in self.steps and '1' in self.steps and (dimname == 'x' or dimname == 'y' or dimname == 'z') and dirR != None and dirA != None and dirS != None:
-                        # reorientation step (0) will reorient to LAS.
-                        # if we are doing slice timing correction (1),
-                        # make sure reorientation will not change the
-                        # slice dimension, since slicetimer does not
-                        # work on any dimension other than the third.
-                        dirR = float(dirR)
-                        dirA = float(dirA)
-                        dirS = float(dirS)
-                        dirmax = dirR
-                        if abs(dirA) > abs(dirmax): dirmax = dirA
-                        if abs(dirS) > abs(dirmax): dirmax = dirS
-                        if ((dimname == 'x' and dirR != dirmax) or
-                            (dimname == 'y' and dirA != dirmax) or
-                            (dimname == 'z' and dirS != dirmax)):
-                            sys.stderr.write("ERROR: reorientation will change slice dimension and so slice timing correction will not work!\n")
-                            raise SystemExit()
-                    if dimname == 'x':
-                        self.xdim = int(numsteps)
-                    elif dimname == 'y':
-                        self.ydim = int(numsteps)
-                    elif dimname == 'z':
-                        self.zdim = int(numsteps)
-                    elif dimname == 't':
-                        self.tdim = int(numsteps)
-                        if self.tr_ms is None:
-                            self.tr_ms = (float(lastpos) - float(firstpos)) / self.tdim
-                            if firstunits == 'ms':
-                                pass
-                            elif firstunits == 's':
-                                self.tr_ms *= 1000.0
-                            elif firstunits == 'us':
-                                self.tr_ms /= 1000.0
-                            else:
-                                sys.stderr.write("Unexpected temporal units in image header: '%s'" % firstunits)
-                                raise SystemExit()
-                mobj = re.search("acqdata: sliceorder = (.*)", line)
-                if mobj:
-                    (self.sliceorder,) = mobj.groups()
-                mobj = re.search(" Filename: (.*\.nii(\.gz)?)", line)
-                if mobj:
-                    fname = mobj.group(1)
-                    testpath = os.path.join( '/'.join(self.origbxh.split('/')[0:-1]), fname)
-                    #testpath = fname;
-                    if os.path.isfile(testpath):
-                        self.thisnii = testpath
-                    elif os.path.isfile(testpath + '.gz'):
-                        self.thisnii = testpath + '.gz'
-                    elif '0' in self.steps:
-                        self.thisnii = None
-                    else:
-                        print "Please provide a BXH that points to a NIFTI file: " + self.origbxh
-                        raise SystemExit()
-        else:
+        
             if (self.thisnii is not None) and ( self.tr_ms is not None ):
                 thishdr = nibabel.load(self.thisnii).get_header()
                 thisshape = thishdr.get_data_shape()
@@ -500,7 +434,7 @@ class RestPipe:
                         slicefile = os.path.join(self.outpath,'sliceorder.txt')
                         f = open(slicefile, 'w')
                         if self.sliceorder == 'up': #bottomup
-                            thisrang = range(1,self.zdim + 1)
+                            thisrang = list(range(1,self.zdim + 1))
                             for i in thisrang:
                                 f.write(str(i))
                                 f.write("\n")
@@ -508,7 +442,7 @@ class RestPipe:
                             f.close()
                             self.slicefile = slicefile
                         elif self.sliceorder == 'down': #topdown
-                            thisrang = range(1,self.zdim + 1)
+                            thisrang = list(range(1,self.zdim + 1))
                             thisrang.reverse() #flip it
                             for i in thisrang:
                                 f.write(str(i))
@@ -517,8 +451,8 @@ class RestPipe:
                             f.close()
                             self.slicefile = slicefile
                         elif re.search('(odd|even)',self.sliceorder):  #interleaved
-                            odds = range(1,self.zdim+1,2)
-                            evens = range(2,self.zdim+1,2)
+                            odds = list(range(1,self.zdim+1,2))
+                            evens = list(range(2,self.zdim+1,2))
                             if self.sliceorder == 'odd': #odds first
                                 for i in odds:
                                     f.write(str(i))
@@ -555,13 +489,13 @@ class RestPipe:
             # otherwise look for default parcellation output file
             if options.corrts is not None:
                 if not os.path.isfile(options.corrts):
-                    print "File does not exist: " + options.corrts
+                    print("File does not exist: " + options.corrts)
                     raise SystemExit()
                 self.corrts = options.corrts
             else:
                 corrtsfile = os.path.join(self.outpath,'corrlabel_ts.txt')
                 if not os.path.isfile(corrtsfile):
-                    print "You are running step 7b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,)
+                    print("You are running step 7b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,))
                     raise SystemExit()
         
 
@@ -664,8 +598,8 @@ class RestPipe:
             self.thisnii = newfile + ".nii.gz"
             self.prevprefix = self.prefix
             self.prefix = newprefix
-            self.mcparams = newfile + ".par"            
-	    self.mcparamsmat = newfile +".mat"
+            self.mcparams = newfile + ".par"
+            self.mcparamsmat = newfile + ".mat"
             logging.info('motion correction successful: ' + self.thisnii )
 
             thisprocstr = str("fsl_tsplot -i " + self.mcparams +  " -t 'MCFLIRT estimated rotations (radians)' -u 1 --start=1 --finish=3 -a x,y,z -w 640 -h 144 -o " + newfile + "_rot.png")
@@ -918,8 +852,8 @@ class RestPipe:
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
 
-	bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile)
-	bandpass.run()
+        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile)
+        bandpass.run()
 
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
@@ -943,8 +877,8 @@ class RestPipe:
         logging.info('smoothing data')
         newprefix = "smooth_" + self.prefix
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
-     
-        kernel_width = self.fwhm       
+
+        kernel_width = self.fwhm
         kernel_sigma = kernel_width/2.3548 
        
         #apply smoothing
@@ -1183,7 +1117,7 @@ class RestPipe:
                 set([ excludethis
                       for ind in excludethese
                       for contributor in (ind,)
-                      for excludethis in xrange(contributor - self.dvarsnumneighbors, contributor + self.dvarsnumneighbors + 1)
+                      for excludethis in range(contributor - self.dvarsnumneighbors, contributor + self.dvarsnumneighbors + 1)
                       if excludethis < data.shape[3]
                      ]))
             logging.info(' marking these volumes due to DVARS > %g: %s', _dvarsthreshold * boldscaling, excludethese)            
@@ -1219,7 +1153,7 @@ class RestPipe:
                 set([ excludethis
                       for ind in excludethese
                       for contributor in (ind + 1,)
-                      for excludethis in xrange(contributor - self.fdnumneighbors, contributor + self.fdnumneighbors + 1)
+                      for excludethis in range(contributor - self.fdnumneighbors, contributor + self.fdnumneighbors + 1)
                       if excludethis < data.shape[3]
                      ]))
             logging.info(' marking these volumes due to FD > %g mm: %s', self.fdthreshold, excludethese)            
@@ -1413,3 +1347,4 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
+
