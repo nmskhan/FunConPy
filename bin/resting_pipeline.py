@@ -89,6 +89,7 @@ parser.add_option("--scrubop",  action="store", choices=('and', 'or'), dest="scr
 parser.add_option("--powerscrub", action="store_true", dest="powerscrub", help="Equivalent to specifying --fdthreshold=0.5 --fdnumneighbors=0 --dvarsthreshold=0.5% --dvarsnumneigbhors=0 --scrubop='and', to mimic the method used in the Power et al. article.  Any conflicting options specified before or after this will override these.", default=False)
 parser.add_option("--scrubkeepminvols",  action="store", type="int", dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
 parser.add_option("--fcdmthresh",  action="store", type="float", dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
+parser.add_option("--ants",  action="store_true", dest="ants",help="Use ANTS for registration?")
 parser.add_option("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
 
 
@@ -254,7 +255,6 @@ class RestPipe:
             else:
                 logging.info("Please provide --tr option when starting from nifti, we don't trust TR derrived from existing nifti files.")
                 raise SystemExit()
-        
         
         #grab FWHM 
         self.fwhm = options.fwhm
@@ -511,9 +511,8 @@ class RestPipe:
                 splitstuff[-1] = splitstuff[-1].strip()
                 labs.append(splitstuff)
 
-        return labs
-
-     
+        return labs        
+       
     #step0 is the initial LAS conversion and nifti creation    
     def step0(self):
         logging.info('converting functional data')
@@ -521,13 +520,6 @@ class RestPipe:
         thisprocstr = str("bxhreorient --orientation=LAS " + self.origbxh + " " + tempfile)
         logging.info('running: ' + thisprocstr)
         subprocess.Popen(thisprocstr,shell=True).wait()
-
-        if self.throwaway is not None:
-            logging.info('disregarding acquisitions')
-            thisprocstr = str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + tempfile + " " + tempfile)
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-            self.tdim = self.tdim - self.throwaway
 
         if os.path.isfile(tempfile):
             newprefix = self.prefix + "_LAS"
@@ -560,9 +552,16 @@ class RestPipe:
                 logging.info('anatomical conversion failed')
                 raise SystemExit()
 
-
     #slice time correction
     def step1(self):
+        
+        if self.throwaway is not None:
+            logging.info('disregarding acquisitions')
+            thisprocstr = str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + self.thisnii)
+            logging.info('running: ' + thisprocstr)
+            subprocess.Popen(thisprocstr,shell=True).wait()
+            self.tdim = self.tdim - self.throwaway
+            
         logging.info('slice time correcting data')
         newprefix = self.prefix + '_st'
         newfile = os.path.join(self.outpath,newprefix)
@@ -584,7 +583,7 @@ class RestPipe:
 
     #run motion correction
     def step2(self):
-        logging.info('motion correcting correcting data')
+        logging.info('motion correcting data')
         newprefix = self.prefix + '_mcf'
         newfile = os.path.join(self.outpath,newprefix)
         
@@ -647,7 +646,8 @@ class RestPipe:
         thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func') )
         logging.info('running: ' + thisprocstr)
         subprocess.Popen(thisprocstr,shell=True).wait()
-
+       
+        
         #now skull strip the mean
         thisprocstr = "bet " + os.path.join(self.outpath,'mean_func') + " " + os.path.join(self.outpath,'mean_func_brain') + " -f " + str(self.betfval) + " -m"
         logging.info('running: ' + thisprocstr)
@@ -693,74 +693,140 @@ class RestPipe:
         newprefix = self.prefix + "_norm"
         newfile = os.path.join(self.outpath, newprefix)           
 
-        if self.flirtmat is not None:
-            #apply the flirt matrix
-            logging.info('applying transformation matrix ' + self.flirtmat + ' to 4D data')
-            thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.flirtref + " -applyxfm -init " + self.flirtmat + " -out " + newfile )
+	#ANTs
+        if options.ants is not None:
+            
+            #make ants ref not pixel type short
+            logging.info('reference to float')
+            refprefix = self.flirtref.split('/')[-1].split('.')[0] + "_float"
+            reffile = os.path.join(self.outpath, refprefix)
+            thisprocstr = str("bet " + self.flirtref + " " + reffile + " -f " + str(self.anatbetfval))
             logging.info('running: ' + thisprocstr)
             subprocess.Popen(thisprocstr,shell=True).wait()
-        elif self.t1nii is not None:
-            #use t1 to generate flirt paramters
-            #first flirt the func to the t1
-            logging.info('flirt func to t1')
-            thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.outpath,'func2t1') + " -omat " + os.path.join(self.outpath,'func2t1.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-            self.toclean.append( os.path.join(self.outpath,'func2t1.nii.gz') )
-
-            #invert the mat
-            logging.info('inverting func2t1.mat')
-            thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.outpath,'t12func.mat') + " " + os.path.join(self.outpath,'func2t1.mat') )
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-
-            #flirt the t1 to standard
-            logging.info('flirt t1 to standard')
-            thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.t1nii + " -out " + os.path.join(self.outpath,'t12standard') + " -omat " + os.path.join(self.outpath,'t12standard.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-            if os.path.isfile(os.path.join(self.outpath,('t12standard' + '.nii.gz'))):
-                self.t1nii = os.path.join(self.outpath,('t12standard' + '.nii.gz'))   
+        
+            if os.path.isfile( reffile + ".nii.gz" ):
+                self.antsref = reffile + ".nii.gz"
+                logging.info('ants reference ready: ' + self.antsref )
             else:
-                logging.info('t1 normalization failed.')
+                logging.info('ants reference failed')
                 raise SystemExit()
-
-
-            #invert the mat
-            logging.info('inverting t12standard.mat')
-            thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.outpath,'standard2t1.mat') + " " + os.path.join(self.outpath,'t12standard.mat'))
+            
+            import ants
+            #first create mean_func
+            thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain'))
             logging.info('running: ' + thisprocstr)
             subprocess.Popen(thisprocstr,shell=True).wait()
-
-            #compute the func2standard mat
-            logging.info('computing func2standard.mat from t12standard.mat func2t1.mat')
-            thisprocstr = str("convert_xfm -omat " + os.path.join(self.outpath,'func2standard.mat') + " -concat " + os.path.join(self.outpath,'t12standard.mat') + " " + os.path.join(self.outpath,'func2t1.mat'))
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-
+            self.meanfunc=os.path.join(self.outpath,'mean_func_brain'+'.nii.gz')
+            self.coregimg=os.path.join(self.outpath,'coregistered'+'.nii.gz')
+            
+            #func to T1 rigid registration
+            logging.info('ANTs func to t1')
+            moving = ants.image_read(self.meanfunc) #mean func
+            fixed=ants.image_read(self.t1nii)
+            reference = ants.image_read(self.antsref)
+            fixed=ants.resample_image(fixed,reference.shape,True,0)
+            moving=ants.resample_image(moving,reference.shape,True,0)
+            tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='Affine')
+            
             #apply the transform
-            logging.info('creating normalized func %s' % (newprefix))
-            thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.thisnii + " -out " + newfile + " -applyxfm -init " + os.path.join(self.outpath,'func2standard.mat') + " -interp trilinear")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            logging.info('Coregistering func')
+            moving=ants.image_read(self.thisnii) #orig func
+            transformmat = tx_func2t1['fwdtransforms']
+            coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
+            #coregistered=ants.resample_image(coregistered, moving.shape,1,0)
+            ants.image_write(coregistered, self.coregimg )
+            
+            
+            #SyN the t1 to standard
+            logging.info('ANTs t1 to standard')
+            fixed = ants.image_read(self.antsref)
+            moving = ants.image_read(self.t1nii)
+            moving=ants.resample_image(moving,reference.shape,True,0)
+            tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
+            t12standard = tx_t12standard['fwdtransforms']
+            
+            #apply the transform
+            logging.info('Normalizing func')
+            fixed = ants.image_read(self.antsref)
+            moving=ants.image_read(self.coregimg) #4d fmri in t1 space
+            
+            vector=reference.shape + (moving.shape[3],)
+            moving=ants.resample_image(moving,vector,True,0)
 
-           
+            normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
+            out_file = newfile + '.nii.gz'
+            ants.image_write(normalized, out_file)
+            
+
+        #FSL
         else:
-            #use the functional to get the matrix
-            thisprocstr = str("flirt -in " +  self.thisnii + " -ref " + self.flirtref + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-
-            if os.path.isfile( newfile + '.mat' ):
-                #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
-                logging.info('applying transformation matrix to 4D data')
-                thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.flirtref + " -applyxfm -init " + (newfile + '.mat') + " -out " + newfile )
+            if self.flirtmat is not None:
+                #apply the flirt matrix
+                logging.info('applying transformation matrix ' + self.flirtmat + ' to 4D data')
+                thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.flirtref + " -applyxfm -init " + self.flirtmat + " -out " + newfile )
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
-            else:
-                logging.info('creation if initial flirt matrix failed.')
-                raise SystemExit()
+            elif self.t1nii is not None:
+                #use t1 to generate flirt paramters
+                #first flirt the func to the t1
+                logging.info('flirt func to t1')
+                thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.outpath,'func2t1') + " -omat " + os.path.join(self.outpath,'func2t1.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+                self.toclean.append( os.path.join(self.outpath,'func2t1.nii.gz') )
 
+                #invert the mat
+                logging.info('inverting func2t1.mat')
+                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.outpath,'t12func.mat') + " " + os.path.join(self.outpath,'func2t1.mat') )
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+
+                #flirt the t1 to standard
+                logging.info('flirt t1 to standard')
+                thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.t1nii + " -out " + os.path.join(self.outpath,'t12standard') + " -omat " + os.path.join(self.outpath,'t12standard.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+                if os.path.isfile(os.path.join(self.outpath,('t12standard' + '.nii.gz'))):
+                    self.t1nii = os.path.join(self.outpath,('t12standard' + '.nii.gz'))
+                else:
+                    logging.info('t1 normalization failed.')
+                    raise SystemExit()
+
+                #invert the mat
+                logging.info('inverting t12standard.mat')
+                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.outpath,'standard2t1.mat') + " " + os.path.join(self.outpath,'t12standard.mat'))
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+
+                #compute the func2standard mat
+                logging.info('computing func2standard.mat from t12standard.mat func2t1.mat')
+                thisprocstr = str("convert_xfm -omat " + os.path.join(self.outpath,'func2standard.mat') + " -concat " + os.path.join(self.outpath,'t12standard.mat') + " " + os.path.join(self.outpath,'func2t1.mat'))
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+
+                #apply the transform
+                logging.info('creating normalized func %s' % (newprefix))
+                thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.thisnii + " -out " + newfile + " -applyxfm -init " + os.path.join(self.outpath,'func2standard.mat') + " -interp trilinear")
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+
+            else:
+                #use the functional to get the matrix
+                thisprocstr = str("flirt -in " +  self.thisnii + " -ref " + self.flirtref + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+
+                if os.path.isfile( newfile + '.mat' ):
+                    #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
+                    logging.info('applying transformation matrix to 4D data')
+                    thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.flirtref + " -applyxfm -init " + (newfile + '.mat') + " -out " + newfile )
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+                else:
+                    logging.info('creation if initial flirt matrix failed.')
+                    raise SystemExit()
+
+        #Check
         if os.path.isfile( newfile + '.nii.gz' ):
             if self.prevprefix is not None:
                 self.toclean.append( self.thisnii )
@@ -1347,4 +1413,3 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
-
