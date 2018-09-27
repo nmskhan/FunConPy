@@ -17,17 +17,14 @@
 import numpy as np
 import numpy.ma
 import nibabel
-import nipype
 from nipype.interfaces import afni
-from scipy import signal
 import os, sys, subprocess
 import string, random
 import re
 import networkx as nx
-from optparse import OptionParser, OptionGroup
 import logging
 import math
-from scipy import ndimage as nd
+from optparse import OptionParser
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
@@ -180,7 +177,8 @@ class RestPipe:
                     self.t1bxh = str(options.anatfile)
                 elif fileExt == '.gz' or fileExt == '.nii':
                     self.t1nii = str(options.anatfile)
-                    thisproc = subprocess.Popen(["fslwrapbxh " + self.t1nii],shell=True).wait()
+                    thisprocstr = str("fslwrapbxh " + self.t1nii)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
                     if os.path.isfile(self.t1nii.split('.')[0] + '.nii.gz'):
                         self.t1bxh = self.t1nii.split('.')[0] + '.nii.gz'
                     elif os.path.isfile(self.t1nii.split('.')[0] + '.nii'):
@@ -243,10 +241,10 @@ class RestPipe:
         if ( '0' in self.steps ) and (self.origbxh is None) and ( self.thisnii is not None ):
             if self.tr_ms is not None:                
                 logging.info('requesting step0, but no bxh provided.  Creating one from ' + self.thisnii )
-		  thisprocstr = str("fslwrapbxh " + self.thisnii)
-		  subprocess.Popen(thisprocstr,shell=True).wait()
+                thisprocstr = str("fslwrapbxh " + self.thisnii)
+                subprocess.Popen(thisprocstr,shell=True).wait()
                 tmpfname = re.split('(\.nii$|\.nii\.gz$)',self.thisnii)[0] + ".bxh"
-    
+
                 if os.path.isfile( tmpfname ):
                     self.origbxh = tmpfname
                 else:
@@ -854,10 +852,6 @@ class RestPipe:
         logging.info('regressing out WM/CSF signal ')
         newprefix = self.prefix + '_wmcsf'
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
-
-        #load nifti data
-        data = nibabel.nifti1.load(self.thisnii)
-        data1 = data.get_data()
 
         #mean time series for wm
         wmout = os.path.join(self.outpath,"wm_ts.txt")
