@@ -710,7 +710,7 @@ class RestPipe:
             reference = ants.image_read(self.flirtref)
             fixed=ants.resample_image(fixed,reference.shape,True,0)
             moving=ants.resample_image(moving,reference.shape,True,0)
-            tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='Affine')
+            tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
             
             #apply the transform
             logging.info('Coregistering func')
