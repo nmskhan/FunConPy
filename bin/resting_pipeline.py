@@ -707,7 +707,7 @@ class RestPipe:
             logging.info('ANTs func to t1')
             moving = ants.image_read(self.meanfunc) #mean func
             fixed=ants.image_read(self.t1nii)
-            reference = ants.image_read(self.antsref)
+            reference = ants.image_read(self.flirtref)
             fixed=ants.resample_image(fixed,reference.shape,True,0)
             moving=ants.resample_image(moving,reference.shape,True,0)
             tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='Affine')
@@ -723,7 +723,7 @@ class RestPipe:
             
             #SyN the t1 to standard
             logging.info('ANTs t1 to standard')
-            fixed = ants.image_read(self.antsref)
+            fixed = ants.image_read(self.flirtref)
             moving = ants.image_read(self.t1nii)
             moving=ants.resample_image(moving,reference.shape,True,0)
             tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
@@ -731,7 +731,7 @@ class RestPipe:
             
             #apply the transform
             logging.info('Normalizing func')
-            fixed = ants.image_read(self.antsref)
+            fixed = ants.image_read(self.flirtref)
             moving=ants.image_read(self.coregimg) #4d fmri in t1 space
             
             vector=reference.shape + (moving.shape[3],)
