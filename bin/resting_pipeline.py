@@ -228,10 +228,11 @@ class RestPipe:
             self.refac = str(options.refac)  
             self.refbrainmask = str(options.refbrainmask)
         else:
-            self.flirtref = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain.nii.gz')
+            #self.flirtref = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain.nii.gz')
             #self.refwm = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain_pve_2.nii.gz')
             #self.refcsf = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain_pve_0.nii.gz')
             #self.refgm = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain_pve_1.nii.gz')
+            self.flirtref = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain.nii.gz')
             self.refwm = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_2.nii.gz')
             self.refcsf = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_0.nii.gz')
             self.refgm = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_1.nii.gz')
@@ -693,21 +694,6 @@ class RestPipe:
 
 	#ANTs
         if options.ants is not None:
-            
-            #make ants ref not pixel type short
-            logging.info('reference to float')
-            refprefix = self.flirtref.split('/')[-1].split('.')[0] + "_float"
-            reffile = os.path.join(self.outpath, refprefix)
-            thisprocstr = str("bet " + self.flirtref + " " + reffile + " -f " + str(self.anatbetfval))
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-        
-            if os.path.isfile( reffile + ".nii.gz" ):
-                self.antsref = reffile + ".nii.gz"
-                logging.info('ants reference ready: ' + self.antsref )
-            else:
-                logging.info('ants reference failed')
-                raise SystemExit()
             
             import ants
             #first create mean_func
@@ -1407,3 +1393,4 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
+    
