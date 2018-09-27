@@ -243,7 +243,7 @@ class RestPipe:
         if ( '0' in self.steps ) and (self.origbxh is None) and ( self.thisnii is not None ):
             if self.tr_ms is not None:                
                 logging.info('requesting step0, but no bxh provided.  Creating one from ' + self.thisnii )
-                thisprocstr = str("fslwrapbxh " + self.thisnii)
+		thisprocstr = str("fslwrapbxh " + self.thisnii)
 		subprocess.Popen(thisprocstr,shell=True).wait()
                 tmpfname = re.split('(\.nii$|\.nii\.gz$)',self.thisnii)[0] + ".bxh"
     
