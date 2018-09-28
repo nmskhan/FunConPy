@@ -387,7 +387,10 @@ class RestPipe:
             self.outpath = str(options.outpath)
             if not ( os.path.exists(self.outpath) ):
                 os.mkdir( self.outpath )
-
+        
+        #a little help to bandpass
+        self.t1normalizedpath=os.path.join(self.outpath,'t1normalized'+'.nii.gz')
+        
         #place to put temp stuff
         if ( os.getenv('TMPDIR') ):
             self.tmpdir = os.getenv('TMPDIR')
@@ -711,7 +714,7 @@ class RestPipe:
             subprocess.Popen(thisprocstr,shell=True).wait()
             self.meanfunc=os.path.join(self.outpath,'mean_func_brain'+'.nii.gz')
             self.coregimg=os.path.join(self.outpath,'coregistered'+'.nii.gz')
-            self.t1normalizedpath=os.path.join(self.outpath,'t1normalized'+'.nii.gz')
+            
             
             #func to T1 rigid registration
             logging.info('ANTs func to t1')
@@ -781,6 +784,7 @@ class RestPipe:
                 subprocess.Popen(thisprocstr,shell=True).wait()
                 if os.path.isfile(os.path.join(self.outpath,('t12standard' + '.nii.gz'))):
                     self.t1nii = os.path.join(self.outpath,('t12standard' + '.nii.gz'))
+                    self.t1normalizedpath = self.t1nii
                 else:
                     logging.info('t1 normalization failed.')
                     raise SystemExit()
@@ -823,6 +827,9 @@ class RestPipe:
         if os.path.isfile( newfile + '.nii.gz' ):
             if self.prevprefix is not None:
                 self.toclean.append( self.thisnii )
+		tempnii=nibabel.load(self.thisnii)
+		self.boldnormalized=os.path.join(self.outpath, "boldnormalized.nii.gz")
+		nibabel.save(tempnii, self.boldnormalized)
             self.thisnii = newfile + '.nii.gz'
             logging.info('initial normalization successful: ' + self.thisnii )
 
@@ -907,7 +914,7 @@ class RestPipe:
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
 
-        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile)
+        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, args=str("-mask " + self.t1normalizedpath))
         bandpass.run()
 
         if os.path.isfile(newfile):
