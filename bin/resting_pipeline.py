@@ -556,10 +556,19 @@ class RestPipe:
         
         if self.throwaway is not None:
             logging.info('disregarding acquisitions')
-            thisprocstr = str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + self.thisnii)
+            newprefix = self.prefix + "_TA"
+            newfile = os.path.join(self.outpath,newprefix)
+            thisprocstr = str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + newfile)
             logging.info('running: ' + thisprocstr)
             subprocess.Popen(thisprocstr,shell=True).wait()
             self.tdim = self.tdim - self.throwaway
+            if os.path.isfile(newfile + ".nii.gz"):
+                self.thisnii = newfile + ".nii.gz"
+                self.prevprefix = self.prefix
+                self.prefix = newprefix
+            else:
+                logging.info('throwaway failed')
+                raise SystemExit()
             
         logging.info('slice time correcting data')
         newprefix = self.prefix + '_st'
@@ -702,6 +711,7 @@ class RestPipe:
             subprocess.Popen(thisprocstr,shell=True).wait()
             self.meanfunc=os.path.join(self.outpath,'mean_func_brain'+'.nii.gz')
             self.coregimg=os.path.join(self.outpath,'coregistered'+'.nii.gz')
+            self.t1normalizedpath=os.path.join(self.outpath,'t1normalized'+'.nii.gz')
             
             #func to T1 rigid registration
             logging.info('ANTs func to t1')
@@ -710,14 +720,13 @@ class RestPipe:
             reference = ants.image_read(self.flirtref)
             fixed=ants.resample_image(fixed,reference.shape,True,0)
             moving=ants.resample_image(moving,reference.shape,True,0)
-            tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
+            tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine')
             
             #apply the transform
             logging.info('Coregistering func')
             moving=ants.image_read(self.thisnii) #orig func
             transformmat = tx_func2t1['fwdtransforms']
             coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
-            #coregistered=ants.resample_image(coregistered, moving.shape,1,0)
             ants.image_write(coregistered, self.coregimg )
             
             
@@ -726,17 +735,17 @@ class RestPipe:
             fixed = ants.image_read(self.flirtref)
             moving = ants.image_read(self.t1nii)
             moving=ants.resample_image(moving,reference.shape,True,0)
-            tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
+            tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN')
             t12standard = tx_t12standard['fwdtransforms']
-            
+            t1normalized = tx_t12standard['warpedmovout']
+            ants.image_write(t1normalized, self.t1normalizedpath)
+
             #apply the transform
             logging.info('Normalizing func')
             fixed = ants.image_read(self.flirtref)
-            moving=ants.image_read(self.coregimg) #4d fmri in t1 space
-            
+            moving=ants.image_read(self.coregimg) #4d fmri in t1 space  
             vector=reference.shape + (moving.shape[3],)
             moving=ants.resample_image(moving,vector,True,0)
-
             normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
             out_file = newfile + '.nii.gz'
             ants.image_write(normalized, out_file)
@@ -754,7 +763,7 @@ class RestPipe:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
-                thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.outpath,'func2t1') + " -omat " + os.path.join(self.outpath,'func2t1.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.outpath,'func2t1') + " -omat " + os.path.join(self.outpath,'func2t1.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
                 self.toclean.append( os.path.join(self.outpath,'func2t1.nii.gz') )
@@ -921,7 +930,7 @@ class RestPipe:
     #FWMH Smoothing
     def step7(self):
         logging.info('smoothing data')
-        newprefix = "smooth_" + self.prefix
+        newprefix = self.prefix + "_smooth"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
 
         kernel_width = self.fwhm
