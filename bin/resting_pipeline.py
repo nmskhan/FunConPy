@@ -930,11 +930,7 @@ class RestPipe:
             self.prefix = newprefix
             self.thisnii = newfile
             logging.info('bandpass filtering successful: ' + self.thisnii )
-
-            logging.info('creating mean image.')
-            thisprocstr = str("fslmaths " + self.thisnii + " -Tmean filt_mean")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+		
         else:
             logging.info('bandpass filtering failed')
             raise SystemExit()
