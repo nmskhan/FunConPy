@@ -233,12 +233,14 @@ class RestPipe:
             #self.refcsf = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain_pve_0.nii.gz')
             #self.refgm = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain_pve_1.nii.gz')
             self.flirtref = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain.nii.gz')
+            self.fnirtref = os.path.join(self.basedir,'data','MNI152_T1_2mm.nii.gz')
             self.refwm = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_2.nii.gz')
             self.refcsf = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_0.nii.gz')
             self.refgm = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_1.nii.gz')
             self.refac = str(options.refac)  
             self.refbrainmask = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain_mask.nii.gz')
-
+            self.fnirtbrainmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_mask_dil.nii.gz')
+            self.fnirtconfig = os.path.join(self.basedir,'data','T1_2_MNI152_2mm.cnf')
         if ( '0' in self.steps ) and (self.origbxh is None) and ( self.thisnii is not None ):
             if self.tr_ms is not None:                
                 logging.info('requesting step0, but no bxh provided.  Creating one from ' + self.thisnii )
@@ -387,9 +389,11 @@ class RestPipe:
             self.outpath = str(options.outpath)
             if not ( os.path.exists(self.outpath) ):
                 os.mkdir( self.outpath )
-        
+            self.regoutpath = os.path.join(self.outpath, 'NormalizationFiles',)
+            if not (os.path.exists(self.regoutpath)):
+                os.mkdir( self.regoutpath)
         #a little help to bandpass
-        self.t1normalizedpath=os.path.join(self.outpath,'t1normalized'+'.nii.gz')
+        self.t1normalizedpath=os.path.join(self.regoutpath,'t1normalized'+'.nii.gz')
         
         #place to put temp stuff
         if ( os.getenv('TMPDIR') ):
@@ -559,7 +563,7 @@ class RestPipe:
         
         if self.throwaway is not None:
             logging.info('disregarding acquisitions')
-            newprefix = self.prefix + "_TA"
+            newprefix = self.prefix + "_ta"
             newfile = os.path.join(self.outpath,newprefix)
             thisprocstr = str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + newfile)
             logging.info('running: ' + thisprocstr)
@@ -691,6 +695,7 @@ class RestPipe:
             subprocess.Popen(thisprocstr,shell=True).wait()
         
             if os.path.isfile( newfile + ".nii.gz" ):
+                self.unbett1=self.t1nii
                 self.t1nii = newfile + ".nii.gz"
                 logging.info('skull stripping completed: ' + self.t1nii )
             else:
@@ -708,14 +713,9 @@ class RestPipe:
         if options.ants is not None:
             
             import ants
-            #first create mean_func
-            thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain'))
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-            self.meanfunc=os.path.join(self.outpath,'mean_func_brain'+'.nii.gz')
-            self.coregimg=os.path.join(self.outpath,'coregistered'+'.nii.gz')
-            
-            
+
+            self.coregimg=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
+                       
             #func to T1 rigid registration
             logging.info('ANTs func to t1')
             moving = ants.image_read(self.meanfunc) #mean func
@@ -766,47 +766,52 @@ class RestPipe:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
-                thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.outpath,'func2t1') + " -omat " + os.path.join(self.outpath,'func2t1.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                #thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.regoutpath,'boldcoregistered') + " -omat " + os.path.join(self.regoutpath,'func2t1.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                thisprocstr = str("epi_reg --epi=" + self.thisnii + " --t1=" + self.t1nii + " t1brain=" + self.unbett1 + " --out=func2t1")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
-                self.toclean.append( os.path.join(self.outpath,'func2t1.nii.gz') )
 
                 #invert the mat
                 logging.info('inverting func2t1.mat')
-                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.outpath,'t12func.mat') + " " + os.path.join(self.outpath,'func2t1.mat') )
+                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.regoutpath,'t12func.mat') + " " + os.path.join(self.regoutpath,'func2t1.mat') )
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
 
                 #flirt the t1 to standard
                 logging.info('flirt t1 to standard')
-                thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.t1nii + " -out " + os.path.join(self.outpath,'t12standard') + " -omat " + os.path.join(self.outpath,'t12standard.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.t1nii + " -out " + os.path.join(self.regoutpath,'t12standard_aff') + " -omat " + os.path.join(self.regoutpath,'t12standard_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
-                if os.path.isfile(os.path.join(self.outpath,('t12standard' + '.nii.gz'))):
-                    self.t1nii = os.path.join(self.outpath,('t12standard' + '.nii.gz'))
-                    self.t1normalizedpath = self.t1nii
-                else:
-                    logging.info('t1 normalization failed.')
-                    raise SystemExit()
-
+                
                 #invert the mat
-                logging.info('inverting t12standard.mat')
-                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.outpath,'standard2t1.mat') + " " + os.path.join(self.outpath,'t12standard.mat'))
+                logging.info('inverting t12standard_aff.mat')
+                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " " + os.path.join(self.regoutpath,'t12standard_aff.mat'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
 
-                #compute the func2standard mat
-                logging.info('computing func2standard.mat from t12standard.mat func2t1.mat')
-                thisprocstr = str("convert_xfm -omat " + os.path.join(self.outpath,'func2standard.mat') + " -concat " + os.path.join(self.outpath,'t12standard.mat') + " " + os.path.join(self.outpath,'func2t1.mat'))
+                #fnirt the t1 to standard
+                logging.info('fnirt t1 to standard')
+                thisprocstr = str("fnirt --ref=" + self.fnirtref + " --refmask=" + self.fnirtbrainmask + " --in=" + self.unbett1 + " --aff=" + os.path.join(self.regoutpath,'t12standard_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + os.path.join(self.regoutpath,'t12standard_fnirt') + " --cout=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
 
                 #apply the transform
                 logging.info('creating normalized func %s' % (newprefix))
-                thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.thisnii + " -out " + newfile + " -applyxfm -init " + os.path.join(self.outpath,'func2standard.mat') + " -interp trilinear")
+                thisprocstr = str("applywarp --ref=" + self.flirtref + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + os.path.join(self.regoutpath,'func2t1.mat'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
-
+                
+                if os.path.isfile(os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))):
+                    self.t1nii = os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))
+                    logging.info('skull stripping normalized T1')
+                    thisprocstr = str("bet " + self.t1nii + " " + self.t1normalizedpath + " -f " + str(self.anatbetfval))
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+  
+                else:
+                    logging.info('t1 normalization failed.')
+                    raise SystemExit()
+                    
             else:
                 #use the functional to get the matrix
                 thisprocstr = str("flirt -in " +  self.thisnii + " -ref " + self.flirtref + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
@@ -826,11 +831,11 @@ class RestPipe:
         #Check
         if os.path.isfile( newfile + '.nii.gz' ):
             if self.prevprefix is not None:
-                self.toclean.append( self.thisnii )
-		tempnii=nibabel.load(self.thisnii)
-		self.boldnormalized=os.path.join(self.outpath, "boldnormalized.nii.gz")
-		nibabel.save(tempnii, self.boldnormalized)
+                self.toclean.append( self.thisnii ) 
             self.thisnii = newfile + '.nii.gz'
+            tempnii=nibabel.load(self.thisnii)
+            self.boldnormalized=os.path.join(self.regoutpath, "boldnormalized.nii.gz")
+            nibabel.save(tempnii, self.boldnormalized)
             logging.info('initial normalization successful: ' + self.thisnii )
 
             self.prevprefix = self.prefix
