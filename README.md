@@ -29,28 +29,41 @@ Python modules are:
 **Step 0**
 Reorient into LAS, convert into nii.gz.
 
-
 **Step 1**
-Throwaway + FSL's slice timing correction.
-If –throwaway is defined, this number of timepoints will be disregarded during this step.
-If starting with a BXH header, you'll likely have the sliceorder field which will be used to create a custom sliceorder file to be used by FSL.
-If this isn't present, then you'll need to define –sliceorder so that we can generate the file for you:
-“odd” is interleaved with odd, then even slice ordering: 1,3,5,2,4,6,etc
-“even” is also interleaved, but when even slice ordering: 2,4,6,1,3,5,etc 
-“up” is ascending data, from the bottom up: 1,2,3,4,5,6
-“down” is descending data, from the top down: 6,5,4,3,2,1
+Throwaway inital volumes. FSL's slice timing correction.
+
+- If –throwaway is defined, this number of timepoints will be disregarded during this step.
+- If starting with a BXH header, you'll likely have the sliceorder field which will be used to create a custom sliceorder file to be used by FSL.
+- If this isn't present, then you'll need to define –sliceorder so that we can generate the file for you:
+  - “odd” is interleaved with odd, then even slice ordering: 1,3,5,2,4,6,etc
+  - “even” is also interleaved, but when even slice ordering: 2,4,6,1,3,5,etc 
+  - “up” is ascending data, from the bottom up: 1,2,3,4,5,6
+  - “down” is descending data, from the top down: 6,5,4,3,2,1
 
 **Step 2**
-Motion correction using FSL's mcflirt.
-Once mcflirt is completed, the 6 motion parameters are then regressed out of each individual voxel usings a linear regression.
+Motion correction using FSL's MCFLIRT. Linear regression of motion parameters.
+
+- MCFLIRT will register each volume to the middle volume. For more detail see [MCFLIRT's documentation](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/MCFLIRT)
+- Once MCFLIRT is completed, the 6 motion parameters are regressed out of each individual voxel using a linear regression.
 
 **Step 3**
-Skull stripping using BET.
-The functional run is meaned across time with fslmaths, then brain extraction (BET) is applied. The resulting mask is then applied to the entire run of data.
+Skull stripping using FSL's [BET](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/BET/UserGuide) or AFNI's [3dAutoMask](https://afni.nimh.nih.gov/pub/dist/doc/program_help/3dAutomask.html) + [3dSkullStrip](https://afni.nimh.nih.gov/pub/dist/doc/program_help/3dSkullStrip.html)
+- BET (default): 
+  - The functional run is meaned across time with fslmaths, then brain extraction (BET) is applied. The resulting mask is then applied to the entire run of data. 
+  - The fractional intensity threshold can be set with ```--fval``` for the fucntional BET and ```--anatfval``` for the T1 BET. Range is 0-1, and smaller values give larger brain outline estimates.
+- AFNI:
+  - To use AFNI for skull stripping, pass the flag ```--afnistrip```
+  - The functional run is skull stripped with 3dAutoMask. The clip level fraction can be set with ```--fval```. Range is 0.1-0.9, and smaller values give larger brain outline estimates.
+  - The T1 image is is skull stripped with 3dSkullStrip. The shrink factor, which controls teh intensity threshold can be set with ```--anatfval```. Range is 0-1, and smaller values give larger brain outline estimates.
 
 **Step 4**
-Normalization the data using FSL's flirt+fnirt or ANTs. For ANTs, add the flag ```-ants```
-    
+Normalization the data using FSL's [FLIRT](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FLIRT) + [FNIRT](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FNIRT) or [ANTs](https://github.com/ANTsX/ANTs). 
+
+- FSL (default):
+
+- ANTs:
+  - To use ANTs for normalization pass the flag ```--ants```
+  
 - If no options are specified, then the default is the standard MNI152_T1_2mm_brain used.
 - If you have a specific template, you can define it with –ref (ie: a kid brain, or study specific template).
 - If your subject has already been normalized during standard pre-processing of other runs, please provide the flirt matrix from pre-stats (flirt only).
