@@ -14,6 +14,7 @@ Python modules are:
 * Scipy
 * Networkx
 * Nipype
+* Nilearn
 * [ANTsPy](https://github.com/ANTsX/ANTsPy)
 * Pandas (only if using ANTs)
 * Scikit-image (only if using ANTs)
@@ -45,7 +46,7 @@ Once mcflirt is completed, the 6 motion parameters are then regressed out of eac
 The functional run is meaned across time with fslmaths, then brain extraction (BET) is applied. Yhe resulting mask is then applied to the entire run of data.
 
 **Step 4**
-Normalize the data using flirt or ANTs. For ANTs, add the flag ```-ants```
+Normalize the data using flirt+fnirt or ANTs. For ANTs, add the flag ```-ants```
     
 - If no options are specified, then the default is the standard MNI152_T1_2mm_brain used.
  
@@ -68,7 +69,7 @@ Smooth data with a FWHM gaussian kernel.
 The default width is 5mm.
 
 **Step 8**
-if defaults are used, then the aal_MNI_V4 label file is used to extract the average timeseries for each of the 116 regions of the Automated Anatomical Labelling Atlas. If you want to provide your own label file, the –corrlabel option can be used. The input to this step would be a 3D image of ROIs the same size as your normalized data. Each individual ROI needs to have a unique intensity value for the timecourse extraction.
+If defaults are used, then the aal_MNI_V4 label file is used to extract the average timeseries for each of the 116 regions of the Automated Anatomical Labelling Atlas. If you want to provide your own label file, the –corrlabel option can be used. The input to this step would be a 3D image of ROIs the same size as your normalized data. Each individual ROI needs to have a unique intensity value for the timecourse extraction.
 
 This step produces 4 files:
 “subject.graphml” : graphml format with regions timecourse, zr_vals, r_vals
