@@ -36,22 +36,23 @@ usage ="""
 resting_pipeline.py --func /path/to/run4.bxh --steps all --outpath /here/ -p func
 Program to run through Nan-kuei Chen's resting state analysis pipeline:
     steps:
-    0 - convert data to nii in LAS orientation ( we suggest LAS if you are skipping this step )
-    1 - slice time correction
-    2 - motion correction, then regress out motion parameter
-    3 - skull stripping
-    4 - normalize data
-    5 - regress out WM/CSF
-    6 - lowpass filter
-    7 - FWHM smoothing
-    8 - do parcellation and produce correlation matrix from label file
+    0 - Convert data to nii in LAS orientation ( we suggest LAS if you are skipping this step )
+    1 - Throwaway of initial volumes, then slice time correction
+    2 - Motion correction, then regress out motion parameter
+    3 - Skull stripping
+    4 - Normalize data
+    5 - Regress out WM/CSF
+    6 - Detrending
+    7 - Lowpass filter
+    8 - FWHM smoothing
+    9 - Do parcellation and produce correlation matrix from label file
       * or split it up:
-         8a - do parcellation from label file
-         8b - produce correlation matrix [--func option is ignored if step 7b
+         9a - Parcellation from label file
+         9b - Produce correlation matrix [--func option is ignored if step 7b
               is run by itself unless --dvarsthreshold is specified, and
               --corrts overrides default location for input parcellation
               results (outputpath/corrlabel_ts.txt)]
-    9 - functional connectivity density mapping
+    10 - Functional connectivity density mapping
 """
 
 parser = OptionParser(usage=usage)
@@ -61,23 +62,24 @@ parser.add_option("--t1",  action="store", type="string", dest="anatfile",help="
 parser.add_option("-p", "--prefix",  action="store", type="string", dest="prefix",help="prefix for all resulting images, defaults to name of input", metavar="func")
 parser.add_option("-s", "--steps",  action="store", type="string", dest="steps",help="comma seperated string of steps. 'all' will run everything, default is all", metavar="0,1,2,3", default='all')
 parser.add_option("-o","--outpath",  action="store",type="string", dest="outpath",help="location to store output files", metavar="PATH", default='PWD')
-parser.add_option("--sliceorder",  action="store",type="string", dest="sliceorder",help="sliceorder if slicetime correction ( odd=interleaved (1,3,5,2,4,6), up=ascending, down=descending, even=interleaved (2,4,6,1,3,5) ).  Default is to read this from input image, if available.", metavar="string")
+parser.add_option("--sliceorder",  action="store",type="choice", choices=['odd', 'up', 'even', 'down'], dest="sliceorder",help="sliceorder if slicetime correction ( odd=interleaved (1,3,5,2,4,6), up=ascending, down=descending, even=interleaved (2,4,6,1,3,5) ).  Default is to read this from input image, if available.", metavar="string")
 parser.add_option("--tr",  action="store", type="float", dest="tr_ms",help="TR of functional data in MSEC", metavar="MSEC")
 parser.add_option("--ref",  action="store", type="string", dest="flirtref",help="pointer to FLIRT reference image if not using standard brain", metavar="FILE")
-parser.add_option("--flirtmat",  action="store", type="string", dest="flirtmat",help="a pre-defined flirt matrix to apply to your functional data. (ie: func2standard.mat)", metavar="FILE")
 parser.add_option("--refwm",  action="store", type="string", dest="refwm",help="pointer to WM mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refcsf",  action="store", type="string", dest="refcsf",help="pointer to CSF mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refgm",  action="store", type="string", dest="refgm",help="pointer to GM mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refbrainmask",  action="store", type="string", dest="refbrainmask",help="pointer to brain mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--fwhm",  action="store", type="int", dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
 parser.add_option("--refacpoint",  action="store", type="string", dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
-parser.add_option("--betfval",  action="store", type="float", dest="betfval",help="f value to use while skull stripping. default is 0.4", metavar="0.4", default='0.4')
-parser.add_option("--anatbetfval",  action="store", type="float", dest="anatbetfval",help="f value to use while skull stripping ANAT. default is 0.5", metavar="0.5", default='0.5')
+parser.add_option("--afnistrip",  action="store_true", dest="afnistrip",help="Use AFNI for skull stripping?")
+parser.add_option("--fval",  action="store", type="float", dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
+parser.add_option("--anatfval",  action="store", type="float", dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
+parser.add_option("--detrend",  action="store", type="int", dest="detrend",help="polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2")
 parser.add_option("--lpfreq",  action="store", type="float", dest="lpfreq",help="frequency cutoff for lowpass filtering in HZ.  default is .08hz", metavar="0.08", default='0.08')
 parser.add_option("--hpfreq",  action="store", type="float", dest="hpfreq",help="frequency cutoff for highpass filtering in HZ.  default is .01hz", metavar="0.01", default='0.01')
 parser.add_option("--corrlabel",  action="store", type="string", dest="corrlabel",help="pointer to 3D label containing ROIs for the correlation search. default is the 116 region AAL label file", metavar="FILE")
 parser.add_option("--corrtext",  action="store", type="string", dest="corrtext",help="pointer to text file containing names/indices for ROIs for the correlation search. default is the 116 region AAL label txt file", metavar="FILE")
-parser.add_option("--corrts",  action="store", type="string", dest="corrts",help="If using step 7b by itself, this is the path to parcellation output (default is to use OUTPATH/corrlabel_ts.txt), which will be used as input to the correlation.", metavar="FILE")
+parser.add_option("--corrts",  action="store", type="string", dest="corrts",help="If using step 9b by itself, this is the path to parcellation output (default is to use OUTPATH/corrlabel_ts.txt), which will be used as input to the correlation.", metavar="FILE")
 parser.add_option("--dvarsthreshold",  action="store", type="string", dest="dvarsthreshold",help="If specified, this reprsents a DVARS threshold either in BOLD units, or if ending in a '%' character, as a percentage of mean global signal intensity (over the brain mask).  Any volume contributing to a DVARS value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  DVARS calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
 parser.add_option("--dvarsnumneighbors",  action="store", type="int", dest="dvarsnumneighbors",help="If --dvarsthreshold is specified, then --dvarsnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 0.", metavar="NUMNEIGHBORS")
 parser.add_option("--fdthreshold",  action="store", type="float", dest="fdthreshold",help="If specified, this reprsents a FD threshold in mm.  Any volume contributing to a FD value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  FD calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
@@ -138,6 +140,8 @@ class RestPipe:
                 self.step8()
             elif i == '9':
                 self.step9()
+            elif i == '10':
+                self.step10()
 
         if options.cleanup is not None:
             self.cleanup()
@@ -146,7 +150,7 @@ class RestPipe:
     def initialize(self):
          #if all was defined, set those steps
         if (options.steps == 'all'):
-            self.steps = ['0','1','2','3','4','5','6','7','8','9']
+            self.steps = ['0','1','2','3','4','5','6','7','8','9','10']
         else:
             #convert unicode str, push into obj
             self.steps = options.steps.split(',')
@@ -154,7 +158,7 @@ class RestPipe:
                 self.steps[i] = str(self.steps[i])
 
         self.needfunc = True
-        if len(self.steps) == 1 and '7b' in self.steps:
+        if len(self.steps) == 1 and '8b' in self.steps:
             self.needfunc = False
 
         #check bxh if provided
@@ -210,6 +214,12 @@ class RestPipe:
 
         #set a basedir where this file is located
         self.basedir = re.sub('\/bin','',os.path.dirname(os.path.realpath(__file__)))
+
+        #grab detrend setting
+        self.detrend = options.detrend
+        if self.detrend > 3 or self.detrend < 0:
+            print("Invalid detrending polynomal: " + self.detrend)
+            raise SystemExit()
 
         #reference image for normalization
         if options.flirtref is not None:
@@ -278,28 +288,37 @@ class RestPipe:
             self.corrlabel = os.path.join(self.basedir,'data','aal_MNI_V4.nii')
             self.corrtext = os.path.join(self.basedir,'data','aal_MNI_V4.txt')
 
-        #a pre-defined flirt matrix for normalization
-        if options.flirtmat is not None:
-            if not ( os.path.isfile(options.flirtmat) ):
-                print("File does not exist: " + options.flirtmat)
-                raise SystemExit()
-            else:
-                self.flirtmat = str(options.flirtmat)
-        else:
-            self.flirtmat = None
-
         #grab band-pass filter input
         self.lpfreq = options.lpfreq
         self.hpfreq = options.hpfreq
 
         #f value to use in bet for skull stripping
-        self.betfval = options.betfval
-        self.anatbetfval = options.anatbetfval
+        if options.fval is not None:
+            self.fval = options.fval
+            if self.fval > 1 or self.fval < 0 :
+                print("Invalid functional skull stripping threshold: " + self.fval)
+                raise SystemExit()
+        else:
+            if options.afnistrip is not None:
+                self.fval = 0.5
+            else:
+                self.fval = 0.4
+        
+        
+        if options.anatfval is not None:
+            self.anatfval = options.anatfval
+            if self.anatfval > 1 or self.anatfval < 0:
+                print("Invalid anatomical skull stripping threshold: " + self.anatfval)
+                raise SystemExit()
+        else:
+            if options.afnistrip is not None:
+                self.fval = 0.6
+            else:
+                self.fval = 0.5
+            
 
         self.sliceorder = options.sliceorder
-
         self.throwaway = options.throwaway
-
         self.scrubop = 'or'
         self.dvarsthreshold = None
         self.dvarsnumneighbors = 0
@@ -380,7 +399,7 @@ class RestPipe:
                 else:
                     logging.info("Functional data has incorrect dimensions. Expected 4D, received : " + str(len(thisshape)) + " D")
                     raise SystemExit()
-            elif ( [ step for step in ['0', '1', '5', '6'] if step in self.steps ] ):
+            elif ( [ step for step in ['0', '1', '5', '6', '7'] if step in self.steps ] ):
                 logging.info("Please provide --tr option when starting from nifti, we don't trust TR derrived from existing nifti files.")
                 raise SystemExit()
 
@@ -491,9 +510,9 @@ class RestPipe:
                 logging.info("slice order not found. please use --sliceorder option")
                 raise SystemExit()
 
-        # If running step 7b by itself, check corrts now
+        # If running step 9b by itself, check corrts now
         self.corrts = None
-        if len(self.steps) == 1 and '7b' in self.steps:
+        if len(self.steps) == 1 and '9b' in self.steps:
             # running step 7b by itself.  See if --corrts is specified or
             # otherwise look for default parcellation output file
             if options.corrts is not None:
@@ -504,7 +523,7 @@ class RestPipe:
             else:
                 corrtsfile = os.path.join(self.outpath,'corrlabel_ts.txt')
                 if not os.path.isfile(corrtsfile):
-                    print("You are running step 7b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,))
+                    print("You are running step 9b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,))
                     raise SystemExit()
         
 
@@ -565,12 +584,14 @@ class RestPipe:
     def step1(self):
         
         if self.throwaway is not None:
-            logging.info('disregarding acquisitions')
+            logging.info('Disregarding acquisitions')
             newprefix = self.prefix + "_ta"
             newfile = os.path.join(self.outpath,newprefix)
             thisprocstr = str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + newfile)
             logging.info('running: ' + thisprocstr)
             subprocess.Popen(thisprocstr,shell=True).wait()
+            if self.tdim < self.throwaway*10:
+                print('WARNING: You are disregardign over 10% of your timepoints. Please verify that is correct')
             self.tdim = self.tdim - self.throwaway
             if os.path.isfile(newfile + ".nii.gz"):
                 self.thisnii = newfile + ".nii.gz"
@@ -654,27 +675,47 @@ class RestPipe:
             logging.info('motion correction failed')
             raise SystemExit()
 
-    #skull strip the functional
+    #skull strip 
     def step3(self):
-        logging.info('skull stripping data')
+        
+        #skull strip the functional
         newprefix = self.prefix + "_brain"
         newfile = os.path.join(self.outpath, newprefix)
 
-        #first create mean_func
-        thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func') )
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
-       
-        
-        #now skull strip the mean
-        thisprocstr = "bet " + os.path.join(self.outpath,'mean_func') + " " + os.path.join(self.outpath,'mean_func_brain') + " -f " + str(self.betfval) + " -m"
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        if options.afnistrip is not None:
+            logging.info('Skull stripping data using AFNI')
+            boldstrip = afni.Automask(in_file=self.thisnii, out_file=os.path.join(self.outpath,'func_brain_mask.nii.gz'), brain_file=os.path.join(newfile,'.nii.gz'), clfrac=self.fval, terminal_output='none')
+            boldstrip.run()
+                            
+            #pictures to check bold skull strip
+            self.meanbold = mean_img(self.thisnii)
+            self.meanbetbold = mean_img(os.path.join(newfile,'.nii.gz'))
+            display = plotting.plot_img((self.meanbold), cmap=plt.cm.Greens)
+            display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.4)
+            display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
+            
+        else:
+            logging.info('Skull stripping data using BET')
+            #first create mean_func
+            thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func') )
+            logging.info('Running: ' + thisprocstr)
+            subprocess.Popen(thisprocstr,shell=True).wait()
 
-        #now mask full run by results
-        thisprocstr = str("fslmaths " + self.thisnii + " -mas " + os.path.join(self.outpath,'mean_func_brain_mask') + " " + newfile)
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+            #now skull strip the mean
+            thisprocstr = "bet " + os.path.join(self.outpath,'mean_func') + " " + os.path.join(self.outpath,'mean_func_brain') + " -f " + str(self.fval) + " -m"
+            logging.info('Running: ' + thisprocstr)
+            subprocess.Popen(thisprocstr,shell=True).wait()
+
+            #now mask full run by results
+            thisprocstr = str("fslmaths " + self.thisnii + " -mas " + os.path.join(self.outpath,'mean_func_brain_mask') + " " + newfile)
+            logging.info('Running: ' + thisprocstr)
+            subprocess.Popen(thisprocstr,shell=True).wait()
+            
+                            
+            #pictures to check bold skull strip
+            display = plotting.plot_img(os.path.join(self.outpath,'mean_func.nii.gz'), cmap=plt.cm.Greens)
+            display.add_overlay(os.path.join(self.outpath,'mean_func_brain.nii.gz'), cmap=plt.cm.Reds, alpha=0.4)
+            display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
 
         if os.path.isfile( newfile + ".nii.gz" ):
             if self.prevprefix is not None:
@@ -683,42 +724,45 @@ class RestPipe:
             self.thisnii = newfile + ".nii.gz"
             self.prevprefix = self.prefix
             self.prefix = newprefix
-            logging.info('skull stripping completed: ' + self.thisnii )
+            logging.info('Skull stripping completed: ' + self.thisnii )
         else:
-            logging.info('skull stripping failed')
+            logging.info('Skull stripping failed')
             raise SystemExit()
 
         #skull strip anat
         if self.t1nii is not None:
-            logging.info('skull stripping anat')
-            newprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain"
-            newfile = os.path.join(self.outpath, newprefix)
-            thisprocstr = str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatbetfval))
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            if options.afnistrip is not None:
+                logging.info('Skull stripping anatomical using AFNI.')
+                t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=os.path.join(newfile,'.nii.gz'), terminal_output='none', args=str('-shrink_fac ', str(self.anatfval)))
+                t1strip.run()
+                
+            else:
+                logging.info('Skull stripping anatomical using BET.')
+                newprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain"
+                newfile = os.path.join(self.outpath, newprefix)
+                thisprocstr = str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval))
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
         
             if os.path.isfile( newfile + ".nii.gz" ):
                 self.unbett1=self.t1nii
                 self.t1nii = newfile + ".nii.gz"
                 self.bett1 = self.t1nii
-                logging.info('skull stripping completed: ' + self.t1nii )
+                logging.info('Skull stripping completed: ' + self.t1nii )
+                
+                #pictures to check t1 skull strip
+                display = plotting.plot_img(self.unbett1, cmap=plt.cm.Greens)
+                display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
+                display.savefig(os.path.join(self.regoutpath, 'SS_T1.png'))
             else:
-                logging.info('skull stripping anatomical failed')
+                logging.info('Skull stripping anatomical failed.')
                 raise SystemExit()
-
-        #pictures to check skull strip
-        #t1
-        display = plotting.plot_img(self.unbett1, cmap=plt.cm.Greens)
-        display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
-        display.savefig(os.path.join(self.regoutpath, 'BET_T1.png'))
-        #bold
-        display = plotting.plot_img(os.path.join(self.outpath,'mean_func.nii.gz'), cmap=plt.cm.Greens)
-        display.add_overlay(os.path.join(self.outpath,'mean_func_brain.nii.gz'), cmap=plt.cm.Reds, alpha=0.4)
-        display.savefig(os.path.join(self.regoutpath, 'BET_BOLD.png'))
+       
+        
 
     #normalize the data
     def step4(self):
-        logging.info('normalizing data')
+        logging.info('Normalizing data.')
         newprefix = self.prefix + "_norm"
         newfile = os.path.join(self.outpath, newprefix)           
 
@@ -728,10 +772,17 @@ class RestPipe:
             import ants
 
             self.coregimg=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
-                       
+            
+            if os.path.isfile(self.outpath,'mean_func_brain.nii.gz') == False:
+                 #first create mean_func
+                 logging.info('Mean fuctional not found, creating mean funcional.')
+                 thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain') )
+                 logging.info('running: ' + thisprocstr)
+                 subprocess.Popen(thisprocstr,shell=True).wait()
+                 
             #func to T1 rigid registration
             logging.info('ANTs func to t1')
-            moving = ants.image_read(os.path.join(self.outpath,'mean_func_brain')) #mean func
+            moving = ants.image_read(os.path.join(self.outpath,'mean_func_brain.nii.gz')) #mean func
             fixed=ants.image_read(self.t1nii)
             reference = ants.image_read(self.flirtref)
             fixed=ants.resample_image(fixed,reference.shape,True,0)
@@ -769,13 +820,7 @@ class RestPipe:
 
         #FSL
         else:
-            if self.flirtmat is not None:
-                #apply the flirt matrix
-                logging.info('applying transformation matrix ' + self.flirtmat + ' to 4D data')
-                thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.flirtref + " -applyxfm -init " + self.flirtmat + " -out " + newfile )
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
-            elif self.t1nii is not None:
+            if self.t1nii is not None:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
@@ -816,10 +861,15 @@ class RestPipe:
                 
                 if os.path.isfile(os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))):
                     self.t1nii = os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))
-                    logging.info('skull stripping normalized T1')
-                    thisprocstr = str("bet " + self.t1nii + " " + self.t1normalized + " -f " + str(self.anatbetfval))
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    if options.afnistrip is not None:
+                        logging.info('Skull stripping normalized T1 using AFNI.')
+                        t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.t1normalized, terminal_output='none', args=str('-shrink_fac ', str(self.anatfval)))
+                        t1strip.run()
+                    else:
+                        logging.info('Skull stripping normalized T1 using BET.')
+                        thisprocstr = str("bet " + self.t1nii + " " + self.t1normalized + " -f " + str(self.anatfval))
+                        logging.info('running: ' + thisprocstr)
+                        subprocess.Popen(thisprocstr,shell=True).wait()
   
                 else:
                     logging.info('t1 normalization failed.')
@@ -869,11 +919,12 @@ class RestPipe:
 
         #pictures for normalization
         #bold on t1
-        self.boldcoregistered = os.path.join(self.regoutpath,'boldcoregistered.nii.gz')
-        self.meanboldcoregistered =  mean_img(self.boldcoregistered)
-        display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
-        display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
-        display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
+        if self.bett1 is not None:
+            self.boldcoregistered = os.path.join(self.regoutpath,'boldcoregistered.nii.gz')
+            self.meanboldcoregistered =  mean_img(self.boldcoregistered)
+            display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
+            display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
+            display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
         #t1 on mni
         display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
         display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
@@ -945,22 +996,44 @@ class RestPipe:
         else:
             logging.info('WM/CSF regression failed')
             raise SystemExit()
-		
-    #bandpass filter
+        
+    #detrending
     def step6(self):
+        logging.info('Detrending data')
+        newprefix = self.prefix + "_detr"
+        newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
+        polynomial = self.detrend       
+
+        detrender = afni.Detrend(in_file=self.thisnii, outfile=newfile, terminal_output='none', args=str('-polort ', polynomial))
+        detrender.run()
+
+        if os.path.isfile(newfile):
+            if self.prevprefix is not None:
+                self.toclean.append(self.thisnii)
+
+            self.prevprefix = self.prefix
+            self.prefix = newprefix
+            self.thisnii = newfile
+            logging.info('Detrending successful: ' + self.thisnii )
+		
+        else:
+            logging.info('Detrending failed')
+            raise SystemExit()
+            
+    #bandpass filter
+    def step7(self):
         logging.info('bandpass filtering data')
         newprefix = self.prefix + "_filt"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
 
-        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, args=str("-mask " + self.t1normalized))
+        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.t1normalized))
         bandpass.run()
 
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
                 self.toclean.append(self.thisnii)
-
             self.prevprefix = self.prefix
             self.prefix = newprefix
             self.thisnii = newfile
@@ -971,7 +1044,7 @@ class RestPipe:
             raise SystemExit()
            
     #FWMH Smoothing
-    def step7(self):
+    def step8(self):
         logging.info('smoothing data')
         newprefix = self.prefix + "_smooth"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
@@ -996,12 +1069,12 @@ class RestPipe:
             raise SystemExit() 
      
     #do the parcellation and correlation
-    def step8(self):
-        self.step8a()
-        self.step8b()
+    def step9(self):
+        self.step9a()
+        self.step9b()
         
     #do the parcellation
-    def step8a(self):
+    def step9a(self):
         logging.info('starting parcellation')
         corrtxt = os.path.join(self.outpath,'corrlabel_ts.txt')
 
@@ -1014,7 +1087,7 @@ class RestPipe:
            
        
     #do the correlation
-    def step8b(self):
+    def step9b(self):
         logging.info('starting correlation')
         rmat = os.path.join(self.outpath,'r_matrix.nii.gz')
         rtxt = os.path.join(self.outpath,'r_matrix.csv')
@@ -1111,7 +1184,7 @@ class RestPipe:
 
 
     #fcdm
-    def step9(self):
+    def step10(self):
         import fcdm
         logging.info('starting functional connectivity density mapping')
 
