@@ -706,6 +706,15 @@ class RestPipe:
                 logging.info('skull stripping anatomical failed')
                 raise SystemExit()
 
+        #pictures to check skull strip
+        #t1
+        display = plotting.plot_img(self.unbett1, cmap=plt.cm.Greens)
+        display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
+        display.savefig(os.path.join(self.regoutpath, 'BET_T1.png'))
+        #bold
+        display = plotting.plot_img(os.path.join(self.outpath,'mean_func.nii.gz'), cmap=plt.cm.Greens)
+        display.add_overlay(os.path.join(self.outpath,'mean_func_brain.nii.gz'), cmap=plt.cm.Reds, alpha=0.4)
+        display.savefig(os.path.join(self.regoutpath, 'BET_BOLD.png'))
 
     #normalize the data
     def step4(self):
@@ -722,7 +731,7 @@ class RestPipe:
                        
             #func to T1 rigid registration
             logging.info('ANTs func to t1')
-            moving = ants.image_read(self.meanfunc) #mean func
+            moving = ants.image_read(os.path.join(self.outpath,'mean_func_brain')) #mean func
             fixed=ants.image_read(self.t1nii)
             reference = ants.image_read(self.flirtref)
             fixed=ants.resample_image(fixed,reference.shape,True,0)
@@ -862,19 +871,22 @@ class RestPipe:
         #bold on t1
         self.boldcoregistered = os.path.join(self.regoutpath,'boldcoregistered.nii.gz')
         self.meanboldcoregistered =  mean_img(self.boldcoregistered)
-        display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.gray)
-        display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.1)
+        display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
+        display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
         display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
         #t1 on mni
-        display = plotting.plot_img(self.t1normalized, cmap=plt.cm.gray)
-        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.1)
+        display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
+        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
         display.savefig(os.path.join(self.regoutpath, 'T1toMNI.png'))
         #bold on mni
         self.meanboldnormalized =  mean_img(self.boldnormalized)
-        display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.gray)
-        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.1)
+        display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
+        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
         display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
-        
+        #T1 BET
+        display = plotting.plot_img(self.t1nii, cmap=plt.cm.Greens)
+        display.add_overlay(os.path.join(self.t1normalized), cmap=plt.cm.Reds, alpha=0.4)
+        display.savefig(os.path.join(self.regoutpath, 'BET_FNIRT_T1.png'))
         
         
    #regress out WM/CSF
