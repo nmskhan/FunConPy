@@ -25,6 +25,9 @@ import networkx as nx
 import logging
 import math
 from optparse import OptionParser
+from nilearn import plotting
+from nilearn.image.image import mean_img
+import matplotlib as plt
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
@@ -393,7 +396,7 @@ class RestPipe:
             if not (os.path.exists(self.regoutpath)):
                 os.mkdir( self.regoutpath)
         #a little help to bandpass
-        self.t1normalizedpath=os.path.join(self.regoutpath,'t1normalized'+'.nii.gz')
+        self.t1normalized=os.path.join(self.regoutpath,'t1normalized'+'.nii.gz')
         
         #place to put temp stuff
         if ( os.getenv('TMPDIR') ):
@@ -697,6 +700,7 @@ class RestPipe:
             if os.path.isfile( newfile + ".nii.gz" ):
                 self.unbett1=self.t1nii
                 self.t1nii = newfile + ".nii.gz"
+                self.bett1 = self.t1nii
                 logging.info('skull stripping completed: ' + self.t1nii )
             else:
                 logging.info('skull stripping anatomical failed')
@@ -740,8 +744,8 @@ class RestPipe:
             moving=ants.resample_image(moving,reference.shape,True,0)
             tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN')
             t12standard = tx_t12standard['fwdtransforms']
-            t1normalized = tx_t12standard['warpedmovout']
-            ants.image_write(t1normalized, self.t1normalizedpath)
+            t1normalizedimg = tx_t12standard['warpedmovout']
+            ants.image_write(t1normalizedimg, self.t1normalized)
 
             #apply the transform
             logging.info('Normalizing func')
@@ -766,14 +770,14 @@ class RestPipe:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
-                #thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.regoutpath,'boldcoregistered') + " -omat " + os.path.join(self.regoutpath,'func2t1.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                thisprocstr = str("epi_reg --epi=" + self.thisnii + " --t1=" + self.t1nii + " t1brain=" + self.unbett1 + " --out=func2t1")
+                thisprocstr = str("flirt -ref " + self.t1nii + " -in " + self.thisnii + " -out " + os.path.join(self.regoutpath,'boldcoregistered') + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                #thisprocstr = str("epi_reg --epi=" + self.thisnii + " --t1=" + self.t1nii + " --t1brain=" + self.unbett1 + " --out=" + os.path.join(self.regoutpath,'boldcoregistered'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
 
                 #invert the mat
                 logging.info('inverting func2t1.mat')
-                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.regoutpath,'t12func.mat') + " " + os.path.join(self.regoutpath,'func2t1.mat') )
+                thisprocstr = str("convert_xfm -inverse -omat " + os.path.join(self.regoutpath,'t12func.mat') + " " + os.path.join(self.regoutpath,'boldcoregistered.mat') )
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
 
@@ -797,14 +801,14 @@ class RestPipe:
 
                 #apply the transform
                 logging.info('creating normalized func %s' % (newprefix))
-                thisprocstr = str("applywarp --ref=" + self.flirtref + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + os.path.join(self.regoutpath,'func2t1.mat'))
+                thisprocstr = str("applywarp --ref=" + self.flirtref + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + os.path.join(self.regoutpath,'boldcoregistered.mat'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
                 
                 if os.path.isfile(os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))):
                     self.t1nii = os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))
                     logging.info('skull stripping normalized T1')
-                    thisprocstr = str("bet " + self.t1nii + " " + self.t1normalizedpath + " -f " + str(self.anatbetfval))
+                    thisprocstr = str("bet " + self.t1nii + " " + self.t1normalized + " -f " + str(self.anatbetfval))
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
   
@@ -854,6 +858,25 @@ class RestPipe:
             logging.info('normalization failed.')
             raise SystemExit()
 
+        #pictures for normalization
+        #bold on t1
+        self.boldcoregistered = os.path.join(self.regoutpath,'boldcoregistered.nii.gz')
+        self.meanboldcoregistered =  mean_img(self.boldcoregistered)
+        display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.gray)
+        display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.1)
+        display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
+        #t1 on mni
+        display = plotting.plot_img(self.t1normalized, cmap=plt.cm.gray)
+        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.1)
+        display.savefig(os.path.join(self.regoutpath, 'T1toMNI.png'))
+        #bold on mni
+        self.meanboldnormalized =  mean_img(self.boldnormalized)
+        display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.gray)
+        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.1)
+        display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
+        
+        
+        
    #regress out WM/CSF
     def step5(self):
         logging.info('regressing out WM/CSF signal ')
@@ -919,7 +942,7 @@ class RestPipe:
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
 
-        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, args=str("-mask " + self.t1normalizedpath))
+        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, args=str("-mask " + self.t1normalized))
         bandpass.run()
 
         if os.path.isfile(newfile):
