@@ -74,7 +74,7 @@ parser.add_option("--refacpoint",  action="store", type="string", dest="refac",h
 parser.add_option("--afnistrip",  action="store_true", dest="afnistrip",help="Use AFNI for skull stripping?")
 parser.add_option("--fval",  action="store", type="float", dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
 parser.add_option("--anatfval",  action="store", type="float", dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
-parser.add_option("--detrend",  action="store", type="int", dest="detrend",help="polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2")
+parser.add_option("--detrend",  action="store", type="int", dest="detrend",help="polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2", default='2')
 parser.add_option("--lpfreq",  action="store", type="float", dest="lpfreq",help="frequency cutoff for lowpass filtering in HZ.  default is .08hz", metavar="0.08", default='0.08')
 parser.add_option("--hpfreq",  action="store", type="float", dest="hpfreq",help="frequency cutoff for highpass filtering in HZ.  default is .01hz", metavar="0.01", default='0.01')
 parser.add_option("--corrlabel",  action="store", type="string", dest="corrlabel",help="pointer to 3D label containing ROIs for the correlation search. default is the 116 region AAL label file", metavar="FILE")
@@ -312,9 +312,9 @@ class RestPipe:
                 raise SystemExit()
         else:
             if options.afnistrip is not None:
-                self.fval = 0.6
+                self.anatfval = 0.6
             else:
-                self.fval = 0.5
+                self.anatfval = 0.5
             
 
         self.sliceorder = options.sliceorder
@@ -683,19 +683,19 @@ class RestPipe:
         newfile = os.path.join(self.outpath, newprefix)
 
         if options.afnistrip is not None:
-            logging.info('Skull stripping data using AFNI')
-            boldstrip = afni.Automask(in_file=self.thisnii, out_file=os.path.join(self.outpath,'func_brain_mask.nii.gz'), brain_file=os.path.join(newfile,'.nii.gz'), clfrac=self.fval, terminal_output='none')
+            logging.info('Skull stripping func using AFNI')
+            boldstrip = afni.Automask(in_file=self.thisnii, out_file=os.path.join(self.outpath,'func_brain_mask.nii.gz'), brain_file=str(newfile + '.nii.gz'), clfrac=self.fval, terminal_output='none')
             boldstrip.run()
                             
             #pictures to check bold skull strip
             self.meanbold = mean_img(self.thisnii)
-            self.meanbetbold = mean_img(os.path.join(newfile,'.nii.gz'))
+            self.meanbetbold = mean_img(str(newfile+'.nii.gz'))
             display = plotting.plot_img((self.meanbold), cmap=plt.cm.Greens)
-            display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.4)
+            display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.3)
             display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
             
         else:
-            logging.info('Skull stripping data using BET')
+            logging.info('Skull stripping func using BET')
             #first create mean_func
             thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func') )
             logging.info('Running: ' + thisprocstr)
@@ -731,15 +731,16 @@ class RestPipe:
 
         #skull strip anat
         if self.t1nii is not None:
+            newprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain"
+            newfile = os.path.join(self.outpath, newprefix)
             if options.afnistrip is not None:
                 logging.info('Skull stripping anatomical using AFNI.')
-                t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=os.path.join(newfile,'.nii.gz'), terminal_output='none', args=str('-shrink_fac ', str(self.anatfval)))
+                self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
+                t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=str(newfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac )
                 t1strip.run()
                 
             else:
                 logging.info('Skull stripping anatomical using BET.')
-                newprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain"
-                newfile = os.path.join(self.outpath, newprefix)
                 thisprocstr = str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
@@ -863,7 +864,7 @@ class RestPipe:
                     self.t1nii = os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))
                     if options.afnistrip is not None:
                         logging.info('Skull stripping normalized T1 using AFNI.')
-                        t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.t1normalized, terminal_output='none', args=str('-shrink_fac ', str(self.anatfval)))
+                        t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.t1normalized, terminal_output='none', args=self.shrinkfac)
                         t1strip.run()
                     else:
                         logging.info('Skull stripping normalized T1 using BET.')
