@@ -691,7 +691,7 @@ class RestPipe:
             self.meanbold = mean_img(self.thisnii)
             self.meanbetbold = mean_img(str(newfile+'.nii.gz'))
             display = plotting.plot_img((self.meanbold), cmap=plt.cm.Greens)
-            display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.3)
+            display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.6)
             display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
             
         else:
@@ -714,7 +714,7 @@ class RestPipe:
                             
             #pictures to check bold skull strip
             display = plotting.plot_img(os.path.join(self.outpath,'mean_func.nii.gz'), cmap=plt.cm.Greens)
-            display.add_overlay(os.path.join(self.outpath,'mean_func_brain.nii.gz'), cmap=plt.cm.Reds, alpha=0.4)
+            display.add_overlay(os.path.join(self.outpath,'mean_func_brain.nii.gz'), cmap=plt.cm.Reds, alpha=0.6)
             display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
 
         if os.path.isfile( newfile + ".nii.gz" ):
