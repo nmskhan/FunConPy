@@ -850,6 +850,7 @@ class RestPipe:
                 #grab skull on t1 for fnirt
                 if '3' not in self.steps:
                     print('WARNING: FNIRT requires T1 with skull. FLIRT requires skull stripped T1. Please be sure you provided a T1 scan with skull.')
+                    self.unbett1=self.t1nii
                     self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
                     if options.afnistrip is not None:
                         logging.info('Skull stripping T1 using AFNI for FLIRT.')
