@@ -92,7 +92,7 @@ parser.add_option("--powerscrub", action="store_true", dest="powerscrub", help="
 parser.add_option("--scrubkeepminvols",  action="store", type="int", dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
 parser.add_option("--fcdmthresh",  action="store", type="float", dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
 parser.add_option("--ants",  action="store_true", dest="ants",help="Use ANTS for registration?")
-parser.add_option("--orig-space",  action="store_true", dest="orig_space",help="Calculate derivatives in the subject original T1 space?")
+parser.add_option("--orig-space",  action="store_true", dest="origspace",help="Calculate derivatives in the subject original T1 space instead of template?")
 parser.add_option("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
 
 
@@ -273,7 +273,7 @@ class RestPipe:
         
         #grab FWHM 
         self.fwhm = options.fwhm
-
+        
         #check original space calculations
         if options.origspace is not None:
             if '4' not in self.steps:
@@ -521,7 +521,10 @@ class RestPipe:
             else:
                 logging.info("slice order not found. please use --sliceorder option")
                 raise SystemExit()
-
+        
+        if '3' not in self.steps and '4' in self.steps and self.t1nii is not None and options.ants is None:
+            print('WARNING: FNIRT requires T1 with skull. Please make sure T1 has skull and BOLD does not.') 
+            
         # If running step 9b by itself, check corrts now
         self.corrts = None
         if len(self.steps) == 1 and '9b' in self.steps:
@@ -828,6 +831,7 @@ class RestPipe:
                 normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
                 out_file = newfile + '.nii.gz'
                 ants.image_write(normalized, out_file)
+                    
             else:
                 #use the functional to get the matrix
                 #func to T1 affine + nonlinear registration
@@ -843,7 +847,22 @@ class RestPipe:
         #FSL
         else:
             if self.t1nii is not None:
-                self.bett1=self.t1nii #save for later imager creation
+                #grab skull on t1 for fnirt
+                if '3' not in self.steps:
+                    print('WARNING: FNIRT requires T1 with skull. FLIRT requires skull stripped T1. Please be sure you provided a T1 scan with skull.')
+                    self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
+                    if options.afnistrip is not None:
+                        logging.info('Skull stripping T1 using AFNI for FLIRT.')
+                        t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.bett1, terminal_output='none', args=self.shrinkfac)
+                        t1strip.run()
+                    else:
+                        logging.info('Skull stripping T1 using BET for FLIRT.')
+                        thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval))
+                        logging.info('running: ' + thisprocstr)
+                        subprocess.Popen(thisprocstr,shell=True).wait()
+                else:
+                    self.bett1=self.t1nii 
+                    
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
