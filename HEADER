@@ -1,6 +1,9 @@
+FunCPy Python Resting State fMRI Preprocessing Pipeline (c) by Vasco Diogo
+
+Based on:
 Python/FSL Resting State Pipeline (c) by Chou et al. AJNAR(2012), May; 33(5): 833–838
 
-Python/FSL Resting State Pipeline is licensed under a
+FunCPy Python Resting State fMRI Preprocessing Pipeline & Python/FSL Resting State Pipeline are licensed under a
 Creative Commons Attribution-ShareAlike 4.0 International License.
 
 You should have received a copy of the license along with this
