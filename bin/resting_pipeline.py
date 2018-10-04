@@ -1052,9 +1052,8 @@ class RestPipe:
         logging.info('Detrending data')
         newprefix = self.prefix + "_detr"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
-        polynomial = self.detrend       
-
-        detrender = afni.Detrend(in_file=self.thisnii, outfile=newfile, terminal_output='none', args=str('-polort ', polynomial))
+        self.polort = '-polort ' + str(self.detrend)       
+        detrender = afni.Detrend(in_file=self.thisnii, out_file=newfile, terminal_output='none', args=self.polort)
         detrender.run()
 
         if os.path.isfile(newfile):
