@@ -64,7 +64,7 @@ parser.add_option("-s", "--steps",  action="store", type="string", dest="steps",
 parser.add_option("-o","--outpath",  action="store",type="string", dest="outpath",help="location to store output files", metavar="PATH", default='PWD')
 parser.add_option("--sliceorder",  action="store",type="choice", choices=['odd', 'up', 'even', 'down'], dest="sliceorder",help="sliceorder if slicetime correction ( odd=interleaved (1,3,5,2,4,6), up=ascending, down=descending, even=interleaved (2,4,6,1,3,5) ).  Default is to read this from input image, if available.", metavar="string")
 parser.add_option("--tr",  action="store", type="float", dest="tr_ms",help="TR of functional data in MSEC", metavar="MSEC")
-parser.add_option("--ref",  action="store", type="string", dest="flirtref",help="pointer to FLIRT reference image if not using standard brain", metavar="FILE")
+parser.add_option("--ref",  action="store", type="string", dest="flirtref",help="pointer to template reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refwm",  action="store", type="string", dest="refwm",help="pointer to WM mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refcsf",  action="store", type="string", dest="refcsf",help="pointer to CSF mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--refgm",  action="store", type="string", dest="refgm",help="pointer to GM mask of reference image if not using standard brain", metavar="FILE")
@@ -92,6 +92,7 @@ parser.add_option("--powerscrub", action="store_true", dest="powerscrub", help="
 parser.add_option("--scrubkeepminvols",  action="store", type="int", dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
 parser.add_option("--fcdmthresh",  action="store", type="float", dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
 parser.add_option("--ants",  action="store_true", dest="ants",help="Use ANTS for registration?")
+parser.add_option("--orig-space",  action="store_true", dest="origspace",help="Calculate derivatives in the subject original T1 space instead of template?")
 parser.add_option("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
 
 
@@ -272,6 +273,17 @@ class RestPipe:
         
         #grab FWHM 
         self.fwhm = options.fwhm
+        
+        #check original space calculations
+        if options.origspace is not None:
+            if '4' not in self.steps:
+                if options.corrlabel is None or options.corrtext is None:
+                    print("You requested derivatives in original T1 subject space, but are not running normalization and did not provide a ROI label files in the subject space. Please run step 4 or provide --corrlabel and --corrtext." )
+                    raise SystemExit()
+            else:
+                if self.t1nii is None:
+                    print("You requested derivatives in original T1 subject space, but did not provide a T1 file" )
+                    raise SystemExit()
 
         #grab correlation label, or assign the AAL brain
         if options.corrlabel is not None:
@@ -509,11 +521,14 @@ class RestPipe:
             else:
                 logging.info("slice order not found. please use --sliceorder option")
                 raise SystemExit()
-
+        
+        if '3' not in self.steps and '4' in self.steps and self.t1nii is not None and options.ants is None:
+            print('WARNING: FNIRT requires T1 with skull. Please make sure T1 has skull and BOLD does not.') 
+            
         # If running step 9b by itself, check corrts now
         self.corrts = None
         if len(self.steps) == 1 and '9b' in self.steps:
-            # running step 7b by itself.  See if --corrts is specified or
+            # running step 9b by itself.  See if --corrts is specified or
             # otherwise look for default parcellation output file
             if options.corrts is not None:
                 if not os.path.isfile(options.corrts):
@@ -526,7 +541,7 @@ class RestPipe:
                     print("You are running step 9b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,))
                     raise SystemExit()
         
-
+        
     #get the labels from the text file
     def grab_labels(self):
         mylabs = open(self.corrtext,'r').readlines()
@@ -771,57 +786,84 @@ class RestPipe:
         if options.ants is not None:
             
             import ants
-
             self.coregimg=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
-            
             if os.path.isfile(self.outpath,'mean_func_brain.nii.gz') == False:
                  #first create mean_func
                  logging.info('Mean fuctional not found, creating mean funcional.')
                  thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain') )
                  logging.info('running: ' + thisprocstr)
                  subprocess.Popen(thisprocstr,shell=True).wait()
-                 
-            #func to T1 rigid registration
-            logging.info('ANTs func to t1')
-            moving = ants.image_read(os.path.join(self.outpath,'mean_func_brain.nii.gz')) #mean func
-            fixed=ants.image_read(self.t1nii)
-            reference = ants.image_read(self.flirtref)
-            fixed=ants.resample_image(fixed,reference.shape,True,0)
-            moving=ants.resample_image(moving,reference.shape,True,0)
-            tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine')
             
-            #apply the transform
-            logging.info('Coregistering func')
-            moving=ants.image_read(self.thisnii) #orig func
-            transformmat = tx_func2t1['fwdtransforms']
-            coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
-            ants.image_write(coregistered, self.coregimg )
+            if self.t1nii is not None:
+                self.bett1=self.t1nii #save for later image creation
+                #func to T1 rigid registration
+                logging.info('ANTs func to t1')
+                moving = ants.image_read(os.path.join(self.outpath,'mean_func_brain.nii.gz')) #mean func
+                fixed=ants.image_read(self.t1nii)
+                reference = ants.image_read(self.flirtref)
+                fixed=ants.resample_image(fixed,reference.shape,True,0)
+                moving=ants.resample_image(moving,reference.shape,True,0)
+                tx_func2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine')
             
+                #apply the transform
+                logging.info('Coregistering func')
+                moving=ants.image_read(self.thisnii) #orig func
+                transformmat = tx_func2t1['fwdtransforms']
+                coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
+                ants.image_write(coregistered, self.coregimg )
             
-            #SyN the t1 to standard
-            logging.info('ANTs t1 to standard')
-            fixed = ants.image_read(self.flirtref)
-            moving = ants.image_read(self.t1nii)
-            moving=ants.resample_image(moving,reference.shape,True,0)
-            tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN')
-            t12standard = tx_t12standard['fwdtransforms']
-            t1normalizedimg = tx_t12standard['warpedmovout']
-            ants.image_write(t1normalizedimg, self.t1normalized)
+                #SyN the t1 to standard
+                logging.info('ANTs t1 to standard')
+                fixed = ants.image_read(self.flirtref)
+                moving = ants.image_read(self.t1nii)
+                moving=ants.resample_image(moving,reference.shape,True,0)
+                tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN')
+                t12standard = tx_t12standard['fwdtransforms']
+                t1normalizedimg = tx_t12standard['warpedmovout']
+                ants.image_write(t1normalizedimg, self.t1normalized)
 
-            #apply the transform
-            logging.info('Normalizing func')
-            fixed = ants.image_read(self.flirtref)
-            moving=ants.image_read(self.coregimg) #4d fmri in t1 space  
-            vector=reference.shape + (moving.shape[3],)
-            moving=ants.resample_image(moving,vector,True,0)
-            normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
-            out_file = newfile + '.nii.gz'
-            ants.image_write(normalized, out_file)
-            
+                #apply the transform
+                logging.info('Normalizing func')
+                fixed = ants.image_read(self.flirtref)
+                moving=ants.image_read(self.coregimg) #4d fmri in t1 space  
+                vector=reference.shape + (moving.shape[3],)
+                moving=ants.resample_image(moving,vector,True,0)
+                normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
+                out_file = newfile + '.nii.gz'
+                ants.image_write(normalized, out_file)
+                    
+            else:
+                #use the functional to get the matrix
+                #func to T1 affine + nonlinear registration
+                logging.info('ANTs func to template')
+                moving = ants.image_read(os.path.join(self.outpath,'mean_func_brain.nii.gz')) #mean func
+                fixed=ants.image_read(self.flirtref)
+                moving=ants.resample_image(moving,fixed.shape,True,0)
+                tx_func2mni = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff')
+                out_file = newfile + '.nii.gz'
+                normalized = tx_func2mni['warpedmovout']
+                ants.image_write(normalized, out_file)
 
         #FSL
         else:
             if self.t1nii is not None:
+                #grab skull on t1 for fnirt
+                if '3' not in self.steps:
+                    print('WARNING: FNIRT requires T1 with skull. FLIRT requires skull stripped T1. Please be sure you provided a T1 scan with skull.')
+                    self.unbett1=self.t1nii
+                    self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
+                    if options.afnistrip is not None:
+                        logging.info('Skull stripping T1 using AFNI for FLIRT.')
+                        t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.bett1, terminal_output='none', args=self.shrinkfac)
+                        t1strip.run()
+                    else:
+                        logging.info('Skull stripping T1 using BET for FLIRT.')
+                        thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval))
+                        logging.info('running: ' + thisprocstr)
+                        subprocess.Popen(thisprocstr,shell=True).wait()
+                else:
+                    self.bett1=self.t1nii 
+                    
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
@@ -889,7 +931,7 @@ class RestPipe:
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                 else:
-                    logging.info('creation if initial flirt matrix failed.')
+                    logging.info('Creation of initial flirt matrix failed.')
                     raise SystemExit()
 
         #Check
@@ -920,26 +962,33 @@ class RestPipe:
 
         #pictures for normalization
         #bold on t1
-        if self.bett1 is not None:
+        if self.t1nii is not None:
+            #bold on t1
             self.boldcoregistered = os.path.join(self.regoutpath,'boldcoregistered.nii.gz')
             self.meanboldcoregistered =  mean_img(self.boldcoregistered)
             display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
             display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
             display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
-        #t1 on mni
-        display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
-        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
-        display.savefig(os.path.join(self.regoutpath, 'T1toMNI.png'))
-        #bold on mni
-        self.meanboldnormalized =  mean_img(self.boldnormalized)
-        display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
-        display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
-        display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
-        #T1 BET
-        display = plotting.plot_img(self.t1nii, cmap=plt.cm.Greens)
-        display.add_overlay(os.path.join(self.t1normalized), cmap=plt.cm.Reds, alpha=0.4)
-        display.savefig(os.path.join(self.regoutpath, 'BET_FNIRT_T1.png'))
-        
+            #t1 on mni
+            display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
+            display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
+            display.savefig(os.path.join(self.regoutpath, 'T1toMNI.png'))
+            #bold on mni
+            self.meanboldnormalized =  mean_img(self.boldnormalized)
+            display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
+            display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
+            display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
+            if options.ants is None:
+                #T1 BET
+                display = plotting.plot_img(self.t1nii, cmap=plt.cm.Greens)
+                display.add_overlay(os.path.join(self.t1normalized), cmap=plt.cm.Reds, alpha=0.4)
+                display.savefig(os.path.join(self.regoutpath, 'BET_FNIRT_T1.png'))
+        else:
+            #bold on mni
+            self.meanboldnormalized =  mean_img(self.boldnormalized)
+            display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
+            display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
+            display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
         
    #regress out WM/CSF
     def step5(self):
@@ -1003,9 +1052,8 @@ class RestPipe:
         logging.info('Detrending data')
         newprefix = self.prefix + "_detr"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
-        polynomial = self.detrend       
-
-        detrender = afni.Detrend(in_file=self.thisnii, outfile=newfile, terminal_output='none', args=str('-polort ', polynomial))
+        self.polort = '-polort ' + str(self.detrend)       
+        detrender = afni.Detrend(in_file=self.thisnii, out_file=newfile, terminal_output='none', args=self.polort)
         detrender.run()
 
         if os.path.isfile(newfile):
