@@ -87,14 +87,14 @@ Signal detrending using AFNI's [3dDetrend](https://afni.nimh.nih.gov/pub/dist/do
 Band-pass filtering using AFNI's [3dBandpass](https://afni.nimh.nih.gov/pub/dist/doc/program_help/3dBandpass.html).
 
 - Remove high or low frequency noise.  
-  - The default lowpass is 0.08 HZ.
-  - The default highpass is at 0.01 HZ
-  - For details on why AFNI's badnpass filtering is used, please check [this discussion](https://neurostars.org/t/bandpass-filtering-different-outputs-from-fsl-and-nipype-custom-function/824)
+  - The default lowpass is 0.08 Hz.
+  - The default highpass is at 0.01 Hz.
+  - For details on why AFNI's badnpass filtering is used, please check [this discussion](https://neurostars.org/t/bandpass-filtering-different-outputs-from-fsl-and-nipype-custom-function/824).
 
 **Step 8**
 Smoothing with a FWHM gaussian kernel.
 
-The default width is 5mm.
+The default width is 5 mm.
 
 **Step 9**
 Parcelation and time series correlation.
@@ -102,16 +102,16 @@ Parcelation and time series correlation.
 - If defaults are used, then the aal_MNI_V4 label file is used to extract the average timeseries for each of the 116 regions of th8e [Automated Anatomical Labelling Atlas](http://www.gin.cnrs.fr/en/tools/aal-aal2/). If you want to provide your own label file, the –corrlabel option can be used. The input to this step would be a 3D image of ROIs the same size as your normalized data. Each individual ROI needs to have a unique intensity value for the timecourse extraction.
 
 - This step produces 4 files:
-  - “subject.graphml” : graphml format with regions timecourse, zr_vals, r_vals
-  - “corrlabel_ts.txt”: extracted time series for each region
-  - “r_matrix.nii.gz”: the correlation coefficients
-  - “zr_matrix.nii.gz”: normalized correlation coefficients
+  - “subject.graphml” : graphml format with regions timecourse, zr_vals, r_vals.
+  - “corrlabel_ts.txt”: extracted time series for each region.
+  - “r_matrix.nii.gz”: the correlation coefficients.
+  - “zr_matrix.nii.gz”: normalized correlation coefficients.
   - “mask_matrix.nii.gz”: an inclusion mask for everything below the intersect of the regions.
 
 **Step 10**
-Functional connectivity density mapping
+Functional connectivity density mapping.
 
-Takes functional data from last step and calculates how connected they are to the voxels around them. Adapted from Dardo Tomasi, PNAS(2010), vol. 107, no. 21. 9885–9890
+Takes functional data from last step and calculates how connected they are to the voxels around them. Adapted from Dardo Tomasi, PNAS(2010), vol. 107, no. 21. 9885–9890.
 
 # Usage
 
