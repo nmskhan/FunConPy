@@ -92,7 +92,7 @@ parser.add_option("--powerscrub", action="store_true", dest="powerscrub", help="
 parser.add_option("--scrubkeepminvols",  action="store", type="int", dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
 parser.add_option("--fcdmthresh",  action="store", type="float", dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
 parser.add_option("--ants",  action="store_true", dest="ants",help="Use ANTS for registration?")
-parser.add_option("--space",  action="store", type="string", choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="string", default='Template')
+parser.add_option("--space",  action="store",type="choice", choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="choice of space", default='Template')
 parser.add_option("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
 
 
@@ -276,7 +276,7 @@ class RestPipe:
         
         #check original space calculations
         self.space=options.space
-        if self.space is not 'Template':
+        if self.space == 'T1' or self.space == 'BOLD':
             if '4' not in self.steps:
                 if options.corrlabel is None or options.corrtext is None:
                     print("You requested derivatives in BOLD or T1 subject space, but are not running normalization and did not provide a ROI label files in the subject space. Please run step 4 or provide --corrlabel and --corrtext." )
@@ -288,7 +288,7 @@ class RestPipe:
                     print("You requested derivatives in BOLD or T1 subject space, and are regressing WM+CSF signal. Please run step 4 or provide masks with --refcsf and --refwm." )
                     raise SystemExit()
             else:
-                if self.t1nii is None and self.space is 'T1':
+                if self.t1nii is None and self.space == 'T1':
                     print("You requested derivatives in T1 subject space, but did not provide a T1 file" )
                     raise SystemExit()
 
@@ -332,10 +332,9 @@ class RestPipe:
         else:
             if options.afnistrip is not None:
                 self.anatfval = 0.6
-            else:
-                self.anatfval = 0.5
                 self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
-            
+            else:
+                self.anatfval = 0.5         
 
         self.sliceorder = options.sliceorder
         self.throwaway = options.throwaway
@@ -566,7 +565,7 @@ class RestPipe:
         return labs        
        
     #step0 is the initial LAS conversion and nifti creation    
-    def step0(self):
+    def step0(self):        
         logging.info('converting functional data')
         tempfile = os.path.join(self.tmpdir,''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(10)) + '.bxh')
         thisprocstr = str("bxhreorient --orientation=LAS " + self.origbxh + " " + tempfile)
@@ -759,7 +758,7 @@ class RestPipe:
             newprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain"
             newfile = os.path.join(self.outpath, newprefix)
             self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
-            self.maskfile = os.path.join(self.outpath, newprefix)
+            self.maskfile = os.path.join(self.outpath, self.maskprefix)
             if options.afnistrip is not None:
                 logging.info('Skull stripping anatomical using AFNI.')
                 t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
@@ -806,7 +805,7 @@ class RestPipe:
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.meanfuncbrain=os.path.join(self.outpath,'mean_func_brain.nii.gz')
                     
-            if self.space is 'Template':
+            if self.space == 'Template':
                 
                 self.t1normalized=os.path.join(self.regoutpath,'t1normalized'+'.nii.gz')
                 self.boldcoregistered=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
@@ -882,7 +881,7 @@ class RestPipe:
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
                     
-            elif self.space is 'T1':
+            elif self.space == 'T1':
                 
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
@@ -961,13 +960,18 @@ class RestPipe:
                 display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.3)
                 display.savefig(os.path.join(self.regoutpath, 'LABELStoT1onBOLD.png'))
                 
-            elif self.space is 'BOLD':
+            elif self.space == 'BOLD':
                 self.t1coregistered=os.path.join(self.regoutpath,'t1coregistered'+'.nii.gz')
                 self.templateont1=os.path.join(self.regoutpath,'templateont1'+'.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace'+'.nii.gz')
                 self.subjrefcsf=os.path.join(self.regoutpath,'WMinBOLDspace'+'.nii.gz')
                 self.subjrefwm=os.path.join(self.regoutpath,'CSFinBOLDspace'+'.nii.gz')
+                
+                #update bold despite no transfomation
+                oldnii=ants.image_read(self.thisnii)
+                ants.image_write(oldnii, out_file)  
+                
                 if self.t1nii is not None:
                     self.bett1=self.t1nii #save for later image creation
                    
@@ -1034,10 +1038,6 @@ class RestPipe:
                     ants.image_write(normalized, self.subjrefwm)
                     self.refwm=self.subjrefwm
                     
-                    #update bold despite no transformation
-                    oldnii=ants.image_read(self.thisnii)
-                    ants.image_write(normalized, out_file)
-                    
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
                     #t1 on bold
@@ -1089,10 +1089,6 @@ class RestPipe:
                     normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
                     ants.image_write(normalized, self.subjrefwm)
                     self.refwm=self.subjrefwm                
-                    
-                    #update bold despite no transfomation
-                    oldnii=ants.image_read(self.thisnii)
-                    ants.image_write(oldnii, out_file)  
 
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
@@ -1104,10 +1100,11 @@ class RestPipe:
                     display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
+                
 
         #FSL
         else:
-            if self.space is 'Template':
+            if self.space == 'Template':
                 if self.t1nii is not None:
                     self.t1normalized=os.path.join(self.regoutpath,'t1normalized')
                     self.t1normalizedbrain=os.path.join(self.regoutpath,'t1normalized_brain'+'.nii.gz')
@@ -1118,7 +1115,7 @@ class RestPipe:
                         self.unbett1=self.t1nii
                         self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
                         self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
-                        self.maskfile = os.path.join(self.outpath, newprefix)
+                        self.maskfile = os.path.join(self.outpath, self.maskprefix)
                         if options.afnistrip is not None:
                             logging.info('Skull stripping T1 using AFNI for FLIRT.')
                             t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
@@ -1177,7 +1174,7 @@ class RestPipe:
                     
                     #pictures for normalization
                     #bold on t1
-                    self.boldcoregistered = self.boldcoregistered + 'nii.gz'
+                    self.boldcoregistered = self.boldcoregistered + '.nii.gz'
                     self.meanboldcoregistered =  mean_img(self.boldcoregistered)
                     display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
                     display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
@@ -1219,7 +1216,7 @@ class RestPipe:
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
 
-            elif self.space is 'T1':
+            elif self.space == 'T1':
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
                 self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
@@ -1233,7 +1230,7 @@ class RestPipe:
                     self.unbett1=self.t1nii
                     self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
                     self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
-                    self.maskfile = os.path.join(self.outpath, newprefix)
+                    self.maskfile = os.path.join(self.outpath, self.maskprefix)
                     if options.afnistrip is not None:
                         logging.info('Skull stripping T1 using AFNI for FLIRT.')
                         t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
@@ -1335,11 +1332,16 @@ class RestPipe:
 
                 
                 
-            elif self.space is 'BOLD':
+            elif self.space == 'BOLD':
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
                 self.subjrefcsf=os.path.join(self.regoutpath,'WMinBOLDspace'+'.nii.gz')
                 self.subjrefwm=os.path.join(self.regoutpath,'CSFinBOLDspace'+'.nii.gz')
+                
+                #update bold despite no transformation
+                oldnii=nibabel.load(self.thisnii)
+                nibabel.save(oldnii, out_file)
+                
                 if self.t1nii is not None:
                     self.t1coregistered=os.path.join(self.regoutpath,'t1coregistered')
                     self.templateont1=os.path.join(self.regoutpath,'templateont1')
@@ -1351,7 +1353,7 @@ class RestPipe:
                         self.unbett1=self.t1nii
                         self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
                         self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
-                        self.maskfile = os.path.join(self.outpath, newprefix)
+                        self.maskfile = os.path.join(self.outpath, self.maskprefix)
                         if options.afnistrip is not None:
                             logging.info('Skull stripping T1 using AFNI for FLIRT.')
                             t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
@@ -1368,7 +1370,7 @@ class RestPipe:
                 
                     #use t1 to generate flirt paramters
                     #first flirt the t1 to func
-                    logging.info('flirt func to t1')
+                    logging.info('flirt T1 to BOLD')
                     thisprocstr = str("flirt -ref " + self.thisnii + " -in " + self.bett1 + " -out " + self.t1coregistered + " -omat " + self.t1coregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
@@ -1394,21 +1396,21 @@ class RestPipe:
                     
                     #apply the transform
                     logging.info('creating normalized labels %s' % (self.subjcorrlabel))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.corrlabel=self.subjcorrlabel
                     
                     #apply the transform
                     logging.info('creating normalized CSF mask %s' % (self.subjrefcsf))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refcsf + " --out=" + self.subjrefwm + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refcsf + " --out=" + self.subjrefwm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.refcsf=self.subjrefcsf
                     
                     #apply the transform
                     logging.info('creating normalized WM mask %s' % (self.subjrefwm))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refwm + " --out=" + self.subjrefcsf + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refwm + " --out=" + self.subjrefcsf + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.refwm=self.subjrefwm
@@ -1509,11 +1511,8 @@ class RestPipe:
                     display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
                     display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
-                 
+                   
         #Check
-        #update bold despite no transformation
-        oldnii=ants.image_read(self.thisnii)
-        ants.image_write(normalized, out_file)
         if os.path.isfile( newfile + '.nii.gz' ):
             
             if self.prevprefix is not None:
