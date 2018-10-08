@@ -328,6 +328,7 @@ class RestPipe:
                 self.anatfval = 0.6
             else:
                 self.anatfval = 0.5
+                self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
             
 
         self.sliceorder = options.sliceorder
@@ -751,15 +752,18 @@ class RestPipe:
         if self.t1nii is not None:
             newprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain"
             newfile = os.path.join(self.outpath, newprefix)
+            self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
+            self.maskfile = os.path.join(self.outpath, newprefix)
             if options.afnistrip is not None:
                 logging.info('Skull stripping anatomical using AFNI.')
-                self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
-                t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=str(newfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac )
+                t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
+                t1mask.run()
+                t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'),expr='a*step(b)', out_file = str(newfile + '.nii.gz'), terminal_output='none' )
                 t1strip.run()
-                
+                                
             else:
                 logging.info('Skull stripping anatomical using BET.')
-                thisprocstr = str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval))
+                thisprocstr = str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval) + " -m")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
         
@@ -799,7 +803,7 @@ class RestPipe:
             if self.space is 'Template':
                 
                 self.t1normalized=os.path.join(self.regoutpath,'t1normalized'+'.nii.gz')
-                self.coregimg=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
+                self.boldcoregistered=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
                 
                 if self.t1nii is not None:
                     self.bett1=self.t1nii #save for later image creation
@@ -817,7 +821,7 @@ class RestPipe:
                     moving=ants.image_read(self.thisnii) #orig func
                     transformmat = tx_func2t1['fwdtransforms']
                     coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
-                    ants.image_write(coregistered, self.coregimg)
+                    ants.image_write(coregistered, self.boldcoregistered)
                 
                     #SyN the t1 to standard
                     logging.info('ANTs t1 to standard')
@@ -832,7 +836,7 @@ class RestPipe:
                     #apply the transform
                     logging.info('Normalizing func')
                     fixed = ants.image_read(self.flirtref)
-                    moving=ants.image_read(self.coregimg) #4d fmri in t1 space  
+                    moving=ants.image_read(self.boldcoregistered) #4d fmri in t1 space  
                     vector=reference.shape + (moving.shape[3],)
                     moving=ants.resample_image(moving,vector,True,0)
                     normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
@@ -840,7 +844,7 @@ class RestPipe:
                     
                     #Images to check normalization
                     #bold on t1
-                    self.meanboldcoregistered =  mean_img(self.coregimg)
+                    self.meanboldcoregistered =  mean_img(self.boldcoregistered)
                     display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
                     display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
@@ -876,6 +880,7 @@ class RestPipe:
                 
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
+                self.boldcoregistered=out_file
                 self.bett1=self.t1nii #save for later image creation
                 
                 #func to T1 rigid registration
@@ -890,7 +895,7 @@ class RestPipe:
                 moving=ants.image_read(self.thisnii) #orig func
                 transformmat = tx_func2t1['fwdtransforms']
                 coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
-                ants.image_write(coregistered, out_file)
+                ants.image_write(coregistered, self.boldcoregistered)
                 
                 #SyN the t1 to standard
                 logging.info('ANTs template to T1')
@@ -912,7 +917,7 @@ class RestPipe:
                 self.corrlabel=self.subjcorrlabel
                 
                 #make images to check normalization
-                self.meanboldcoregistered =  mean_img(out_file)
+                self.meanboldcoregistered =  mean_img(self.boldcoregistered)
                 #bold on t1  
                 display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
                 display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
@@ -931,10 +936,10 @@ class RestPipe:
                 display.savefig(os.path.join(self.regoutpath, 'LABELStoT1onBOLD.png'))
                 
             elif self.space is 'BOLD':
-                self.coregimg=os.path.join(self.regoutpath,'t1coregistered'+'.nii.gz')
+                self.t1coregistered=os.path.join(self.regoutpath,'t1coregistered'+'.nii.gz')
                 self.templateont1=os.path.join(self.regoutpath,'templateont1'+'.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
-                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
+                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace'+'.nii.gz')
                 if self.t1nii is not None:
                     self.bett1=self.t1nii #save for later image creation
                    
@@ -956,7 +961,7 @@ class RestPipe:
                     tx_t12func = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine')
                     transformmat = tx_t12func['fwdtransforms']
                     coregistered = tx_t12func['warpedmovout']
-                    ants.image_write(coregistered, self.coregimg )
+                    ants.image_write(coregistered, self.t1coregistered)
                     
                     #Apply to template
                     logging.info('Normalizing template from T1 to BOLD')
@@ -984,7 +989,7 @@ class RestPipe:
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
                     #t1 on bold
-                    display = plotting.plot_img(self.coregimg, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.t1coregistered, cmap=plt.cm.Greens)
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'T1toBOLD.png'))
                     #template on t1
@@ -1035,18 +1040,25 @@ class RestPipe:
         else:
             if self.space is 'Template':
                 if self.t1nii is not None:
+                    self.t1normalized=os.path.join(self.regoutpath,'t1normalized')
+                    self.t1normalizedbrain=os.path.join(self.regoutpath,'t1normalized_brain'+'.nii.gz')
+                    self.boldcoregistered=os.path.join(self.regoutpath,'boldcoregistered')
                     #grab skull on t1 for fnirt
                     if '3' not in self.steps:
                         print('WARNING: FNIRT requires T1 with skull. FLIRT requires skull stripped T1. Please be sure you provided a T1 scan with skull.')
                         self.unbett1=self.t1nii
                         self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
+                        self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
+                        self.maskfile = os.path.join(self.outpath, newprefix)
                         if options.afnistrip is not None:
                             logging.info('Skull stripping T1 using AFNI for FLIRT.')
-                            t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.bett1, terminal_output='none', args=self.shrinkfac)
+                            t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
+                            t1mask.run()
+                            t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.bett1, terminal_output='none' )
                             t1strip.run()
                         else:
                             logging.info('Skull stripping T1 using BET for FLIRT.')
-                            thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval))
+                            thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
                             logging.info('running: ' + thisprocstr)
                             subprocess.Popen(thisprocstr,shell=True).wait()
                     else:
@@ -1055,11 +1067,10 @@ class RestPipe:
                     #use t1 to generate flirt paramters
                     #first flirt the func to the t1
                     logging.info('flirt func to t1')
-                    thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.thisnii + " -out " + os.path.join(self.regoutpath,'boldcoregistered') + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                    #thisprocstr = str("epi_reg --epi=" + self.thisnii + " --t1=" + self.t1nii + " --t1brain=" + self.unbett1 + " --out=" + os.path.join(self.regoutpath,'boldcoregistered'))
+                    thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.thisnii + " -out " + self.boldcoregistered + " -omat " + self.boldcoregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
-    
+                    
                     #flirt the t1 to standard
                     logging.info('flirt t1 to standard')
                     thisprocstr = str("flirt -ref " + self.flirtref + " -in " + self.bett1 + " -out " + os.path.join(self.regoutpath,'t12standard_aff') + " -omat " + os.path.join(self.regoutpath,'t12standard_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
@@ -1068,52 +1079,52 @@ class RestPipe:
 
                     #fnirt the t1 to standard
                     logging.info('fnirt t1 to standard')
-                    thisprocstr = str("fnirt --ref=" + self.fnirtref + " --refmask=" + self.fnirtbrainmask + " --in=" + self.unbett1 + " --aff=" + os.path.join(self.regoutpath,'t12standard_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + os.path.join(self.regoutpath,'t12standard_fnirt') + " --cout=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef'))
+                    thisprocstr = str("fnirt --ref=" + self.fnirtref + " --refmask=" + self.fnirtbrainmask + " --in=" + self.unbett1 + " --aff=" + os.path.join(self.regoutpath,'t12standard_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.t1normalized + " --cout=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef'))
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
     
                     #apply the transform
                     logging.info('creating normalized func %s' % (newprefix))
-                    thisprocstr = str("applywarp --ref=" + self.flirtref + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + os.path.join(self.regoutpath,'boldcoregistered.mat'))
+                    thisprocstr = str("applywarp --ref=" + self.flirtref + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.boldcoregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     
                     #skull strip normalized t1 for visualization purposes
-                    if os.path.isfile(os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))):
-                        self.t1nii = os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))
+                    self.t1normalized=self.t1normalized+'.nii.gz'
+                    if os.path.isfile(self.t1normalized):
                         if options.afnistrip is not None:
                             logging.info('Skull stripping normalized T1 using AFNI.')
-                            t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.t1normalized, terminal_output='none', args=self.shrinkfac)
+                            t1strip = afni.SkullStrip(in_file=self.t1normalized, out_file=self.t1normalizedbrain, terminal_output='none', args=self.shrinkfac)
                             t1strip.run()
                         else:
                             logging.info('Skull stripping normalized T1 using BET.')
-                            thisprocstr = str("bet " + self.t1nii + " " + self.t1normalized + " -f " + str(self.anatfval))
+                            thisprocstr = str("bet " + self.t1normalized + " " + self.t1normalizedbrain + " -f " + str(self.anatfval))
                             logging.info('running: ' + thisprocstr)
                             subprocess.Popen(thisprocstr,shell=True).wait()
-      
+                        self.t1nii = self.t1normalized
                     else:
                         logging.info('t1 normalization failed.')
                         raise SystemExit()
                     
                     #pictures for normalization
                     #bold on t1
-                    self.boldcoregistered = os.path.join(self.regoutpath,'boldcoregistered.nii.gz')
+                    self.boldcoregistered = self.boldcoregistered + 'nii.gz'
                     self.meanboldcoregistered =  mean_img(self.boldcoregistered)
                     display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
                     display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
-                    #t1 on mni
-                    display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
+                    #t1 on template
+                    display = plotting.plot_img(self.t1normalizedbrain, cmap=plt.cm.Greens)
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
-                    display.savefig(os.path.join(self.regoutpath, 'T1toMNI.png'))
-                    #bold on mni
+                    display.savefig(os.path.join(self.regoutpath, 'T1toTEMPLATE.png'))
+                    #bold on template
                     self.meanboldnormalized =  mean_img(out_file)
                     display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
-                    display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
+                    display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
                     #T1 fnirt skull strip
-                    display = plotting.plot_img(self.t1nii, cmap=plt.cm.Greens)
-                    display.add_overlay(os.path.join(self.t1normalized), cmap=plt.cm.Reds, alpha=0.4)
+                    display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
+                    display.add_overlay(os.path.join(self.t1normalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_T1.png'))
                     self.t1nii=self.t1normalized
                         
@@ -1137,22 +1148,30 @@ class RestPipe:
                     self.meanboldnormalized =  mean_img(out_file)
                     display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
-                    display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
+                    display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
 
-            elif self.space is 'T1':      
-                            
+            elif self.space is 'T1':
+                self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
+                self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain'+'.nii.gz')
+                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
+                self.boldcoregistered=newfile #out_file = newfile + '.nii.gz'
+                          
                 #grab skull on t1 for fnirt
                 if '3' not in self.steps:
                     print('WARNING: FNIRT requires T1 with skull. FLIRT requires skull stripped T1. Please be sure you provided a T1 scan with skull.')
                     self.unbett1=self.t1nii
                     self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
+                    self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
+                    self.maskfile = os.path.join(self.outpath, newprefix)
                     if options.afnistrip is not None:
                         logging.info('Skull stripping T1 using AFNI for FLIRT.')
-                        t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.bett1, terminal_output='none', args=self.shrinkfac)
+                        t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
+                        t1mask.run()
+                        t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.bett1, terminal_output='none' )
                         t1strip.run()
                     else:
                         logging.info('Skull stripping T1 using BET for FLIRT.')
-                        thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval))
+                        thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
                         logging.info('running: ' + thisprocstr)
                         subprocess.Popen(thisprocstr,shell=True).wait()
                 else:
@@ -1161,97 +1180,226 @@ class RestPipe:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
-                thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.thisnii + " -out " + os.path.join(self.regoutpath,'boldcoregistered') + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.thisnii + " -out " + self.boldcoregistered + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
 
                 #flirt the standard to t1
                 logging.info('flirt standard to t1')
-                thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.t1nii + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.flirtref + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
 
-                #fnirt the t1 to standard
+                #fnirt the standard to t1
                 logging.info('fnirt standard to t1')
-                thisprocstr = str("fnirt --ref=" + self.unbett1 + " --refmask=" + self. + " --in=" + self.fnirtref + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + os.path.join(self.regoutpath,'standard2t1_fnirt') + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
-
-                #apply the transform
-                logging.info('creating normalized func %s' % (newprefix))
-                thisprocstr = str("applywarp --ref=" + self.flirtref + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + os.path.join(self.regoutpath,'boldcoregistered.mat'))
+                self.maskfilepath = self.maskfile + '.nii.gz'
+                thisprocstr = str("fnirt --ref=" + self.unbett1 + " --refmask=" + self.maskfilepath + " --in=" + self.fnirtref + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templatenormalized + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
                 
-                #skull strip normalized t1 for visualization purposes
-                if os.path.isfile(os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))):
-                    self.t1nii = os.path.join(self.regoutpath,('t12standard_fnirt' + '.nii.gz'))
+                #apply the transform
+                logging.info('creating normalized labels %s' % (newprefix))
+                thisprocstr = str("applywarp --ref=" + self.bett1 + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz'))
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+                self.corrlabel=self.subjcorrlabel            
+                
+                #skull strip normalized template for visualization purposes
+                if os.path.isfile(self.templatenormalized + '.nii.gz'):
+                    self.t1nii = self.bett1
+                    self.templatenormalized=self.templatenormalized+'.nii.gz'
                     if options.afnistrip is not None:
-                        logging.info('Skull stripping normalized T1 using AFNI.')
-                        t1strip = afni.SkullStrip(in_file=self.t1nii, out_file=self.t1normalized, terminal_output='none', args=self.shrinkfac)
+                        logging.info('Skull stripping normalized template using AFNI.')
+                        t1strip = afni.SkullStrip(in_file=self.templatenormalized, out_file=self.templatenormalizedbrain, terminal_output='none', args=self.shrinkfac)
                         t1strip.run()
                     else:
-                        logging.info('Skull stripping normalized T1 using BET.')
-                        thisprocstr = str("bet " + self.t1nii + " " + self.t1normalized + " -f " + str(self.anatfval))
+                        logging.info('Skull stripping normalized template using BET.')
+                        thisprocstr = str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval))
                         logging.info('running: ' + thisprocstr)
                         subprocess.Popen(thisprocstr,shell=True).wait()
   
                 else:
                     logging.info('t1 normalization failed.')
                     raise SystemExit()
+
                 
-                #pictures for normalization
-                #bold on t1
-                self.boldcoregistered = os.path.join(self.regoutpath,'boldcoregistered.nii.gz')
+                #make images to check normalization
+                self.boldcoregistered = self.boldcoregistered + '.nii.gz'
+                #bold on t1  
                 self.meanboldcoregistered =  mean_img(self.boldcoregistered)
                 display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
                 display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
-                #t1 on mni
-                display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
-                display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
-                display.savefig(os.path.join(self.regoutpath, 'T1toMNI.png'))
-                #bold on mni
-                self.meanboldnormalized =  mean_img(out_file)
-                display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
-                display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
-                display.savefig(os.path.join(self.regoutpath, 'BOLDtoMNI.png'))
-                #T1 fnirt skull strip
-                display = plotting.plot_img(self.t1nii, cmap=plt.cm.Greens)
-                display.add_overlay(os.path.join(self.t1normalized), cmap=plt.cm.Reds, alpha=0.4)
-                display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_T1.png'))
-                self.t1nii=self.t1normalized
-                
-                
-                
-                
-                
-                
+                #template on t1
+                display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens)
+                display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
+                display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1.png'))
+                #template on bold in t1
+                display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens)
+                display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.4)
+                display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1onBOLD.png'))
+                #labels on bold in t1
+                display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.3)
+                display.savefig(os.path.join(self.regoutpath, 'LABELStoT1onBOLD.png'))
+                #Template fnirt skull strip
+                display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                display.add_overlay(os.path.join(self.templatenormalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
+                display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATE.png'))
+
                 
                 
             elif self.space is 'BOLD':
+                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace.nii.gz')
+                self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
+                if self.t1nii is not None:
+                    self.t1coregistered=os.path.join(self.regoutpath,'t1coregistered')
+                    self.templateont1=os.path.join(self.regoutpath,'templateont1')
+                    self.templateont1brain=os.path.join(self.regoutpath,'templateont1_brain.nii.gz')
+                    self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain.nii.gz')
+                    #grab skull on t1 for fnirt
+                    if '3' not in self.steps:
+                        print('WARNING: FNIRT requires T1 with skull. FLIRT requires skull stripped T1. Please be sure you provided a T1 scan with skull.')
+                        self.unbett1=self.t1nii
+                        self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
+                        self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
+                        self.maskfile = os.path.join(self.outpath, newprefix)
+                        if options.afnistrip is not None:
+                            logging.info('Skull stripping T1 using AFNI for FLIRT.')
+                            t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
+                            t1mask.run()
+                            t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.bett1, terminal_output='none' )
+                            t1strip.run()
+                        else:
+                            logging.info('Skull stripping T1 using BET for FLIRT.')
+                            thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
+                            logging.info('running: ' + thisprocstr)
+                            subprocess.Popen(thisprocstr,shell=True).wait()
+                    else:
+                        self.bett1=self.t1nii 
+                
+                    #use t1 to generate flirt paramters
+                    #first flirt the t1 to func
+                    logging.info('flirt func to t1')
+                    thisprocstr = str("flirt -ref " + self.thisnii + " -in " + self.bett1 + " -out " + self.t1coregistered + " -omat " + self.t1coregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+               
+                    #flirt the standard to t1
+                    logging.info('flirt standard to t1')
+                    thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.flirtref + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+        
+                    #fnirt the standard to t1
+                    logging.info('fnirt standard to t1')
+                    self.maskfilepath = self.maskfile + '.nii.gz'
+                    thisprocstr = str("fnirt --ref=" + self.unbett1 + " --refmask=" + self.maskfilepath + " --in=" + self.fnirtref + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templateont1 + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+                
+                    #apply the transform
+                    logging.info('creating normalized template %s' % (newprefix))
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.templatenormalized + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
                     
+                    #apply the transform
+                    logging.info('creating normalized labels %s' % (newprefix))
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    self.corrlabel=self.subjcorrlabel
                     
+                    #skull strip normalized template for visualization purposes
+                    self.templatenormalized=self.templatenormalized + '.nii.gz'
+                    self.templateont1=self.templateont1 + '.nii.gz'
+                    if os.path.isfile(self.templatenormalized) and os.path.isfile(self.templateont1):
+                        self.t1nii = self.bett1
+                        if options.afnistrip is not None:
+                            logging.info('Skull stripping coregistered + normalized template using AFNI.')
+                            t1strip = afni.SkullStrip(in_file=self.templatenormalized, out_file=self.templatenormalizedbrain, terminal_output='none', args=self.shrinkfac)
+                            t1strip.run()
+                            t1strip = afni.SkullStrip(in_file=self.templateont1, out_file=self.templateont1brain, terminal_output='none', args=self.shrinkfac)
+                            t1strip.run()
+                        else:
+                            logging.info('Skull stripping coregistered + normalized template using BET.')
+                            thisprocstr = str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval))
+                            logging.info('running: ' + thisprocstr)
+                            subprocess.Popen(thisprocstr,shell=True).wait()
+                            thisprocstr = str("bet " + self.templateont1 + " " + self.templateont1brain + " -f " + str(self.anatfval))
+                            logging.info('running: ' + thisprocstr)
+                            subprocess.Popen(thisprocstr,shell=True).wait()
+          
+                    else:
+                        logging.info('t1 normalization failed.')
+                        raise SystemExit()   
                     
+                    #make images to check normalization
+                    self.meanbold =  mean_img(self.thisnii)
+                    self.t1coregistered= self.t1coregistered +' .nii.gz'
+                    self.templateont1=self.templateont1+ '.nii.gz'
+                    #t1 on bold
+                    display = plotting.plot_img(self.t1coregistered, cmap=plt.cm.Greens)
+                    display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
+                    display.savefig(os.path.join(self.regoutpath, 'T1toBOLD.png'))
+                    #template on t1
+                    display = plotting.plot_img(self.templateont1brain, cmap=plt.cm.Greens)
+                    display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
+                    display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1.png'))
+                    #template on bold
+                    display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens)
+                    display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
+                    display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoBOLD.png'))
+                    #labels on bold
+                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                    display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
+                    display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
+                    #Template fnirt skull strip
+                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                    display.add_overlay(os.path.join(self.templatenormalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
+                    display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATE.png'))
+                    #Template fnirt skull strip
+                    display = plotting.plot_img(self.templateont1, cmap=plt.cm.Greens)
+                    display.add_overlay(os.path.join(self.templateont1brain), cmap=plt.cm.Reds, alpha=0.4)
+                    display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATEonT1.png'))
+               
+                
+                else:
+                    #use the functional to get the matrix
+                    thisprocstr = str("flirt -in " +  self.flirtref + " -ref " + self.thisnii + " -out " + self.tempatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+    
+                    if os.path.isfile( self.templatenormalized + '.mat' ):
+                        #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
+                        logging.info('applying transformation matrix to 4D data')
+                        thisprocstr = str("flirt -in " + self.corrlabel+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized+ '.mat') + " -out " + self.subjcorrlabel)
+                        logging.info('running: ' + thisprocstr)
+                        subprocess.Popen(thisprocstr,shell=True).wait()
+                        self.subjcorrlabel=self.corrlabel
+                    else:
+                        logging.info('Creation of initial flirt matrix failed.')
+                        raise SystemExit()
+                        
+                    #pictures for normalization
+                    self.meanboldnormalized =  mean_img(self.thisnii)
+                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                    display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
+                    display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoBOLD.png'))
                     
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
-                    
+                    #pictures for normalization
+                    self.meanboldnormalized =  mean_img(self.thisnii)
+                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                    display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
+                    display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
+                 
         #Check
+        #update bold despite no transformation
+        oldnii=ants.image_read(self.thisnii)
+        ants.image_write(normalized, out_file)
         if os.path.isfile( newfile + '.nii.gz' ):
+            
             if self.prevprefix is not None:
                 self.toclean.append( self.thisnii ) 
             self.thisnii = newfile + '.nii.gz'
