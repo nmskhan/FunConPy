@@ -281,6 +281,12 @@ class RestPipe:
                 if options.corrlabel is None or options.corrtext is None:
                     print("You requested derivatives in BOLD or T1 subject space, but are not running normalization and did not provide a ROI label files in the subject space. Please run step 4 or provide --corrlabel and --corrtext." )
                     raise SystemExit()
+                elif '5' in self.steps and options.refwm is None:
+                    print("You requested derivatives in BOLD or T1 subject space, and are regressing WM+CSF signal. Please run step 4 or provide masks with --refcsf and --refwm.")
+                    raise SystemExit()
+                elif '5' in self.steps and options.refcsf is None:
+                    print("You requested derivatives in BOLD or T1 subject space, and are regressing WM+CSF signal. Please run step 4 or provide masks with --refcsf and --refwm." )
+                    raise SystemExit()
             else:
                 if self.t1nii is None and self.space is 'T1':
                     print("You requested derivatives in T1 subject space, but did not provide a T1 file" )
@@ -880,6 +886,8 @@ class RestPipe:
                 
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
+                self.subjrefcsf=os.path.join(self.regoutpath,'WMinT1space'+'.nii.gz')
+                self.subjrefwm=os.path.join(self.regoutpath,'CSFinT1space'+'.nii.gz')
                 self.boldcoregistered=out_file
                 self.bett1=self.t1nii #save for later image creation
                 
@@ -907,6 +915,24 @@ class RestPipe:
                 templatenormalizedimg = tx_standard2t1['warpedmovout']
                 ants.image_write(templatenormalizedimg, self.templatenormalized)
     
+                #apply the transform
+                logging.info('Normalizing CSF mask')
+                fixed = ants.image_read(self.t1nii)
+                moving=ants.image_read(self.refcsf) #label file in template space 
+                moving=ants.resample_image(moving, fixed.shape,True,0)
+                normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=standard2t1[0])
+                ants.image_write(normalized, self.subjrefcsf)
+                self.refcsf=self.subjrefcsf
+                
+                #apply the transform
+                logging.info('Normalizing WM mask')
+                fixed = ants.image_read(self.t1nii)
+                moving=ants.image_read(self.refwm) #label file in template space 
+                moving=ants.resample_image(moving, fixed.shape,True,0)
+                normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=standard2t1[0])
+                ants.image_write(normalized, self.subjrefwm)
+                self.refwm=self.subjrefwm
+                
                 #apply the transform
                 logging.info('Normalizing label file')
                 fixed = ants.image_read(self.t1nii)
@@ -940,6 +966,8 @@ class RestPipe:
                 self.templateont1=os.path.join(self.regoutpath,'templateont1'+'.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace'+'.nii.gz')
+                self.subjrefcsf=os.path.join(self.regoutpath,'WMinBOLDspace'+'.nii.gz')
+                self.subjrefwm=os.path.join(self.regoutpath,'CSFinBOLDspace'+'.nii.gz')
                 if self.t1nii is not None:
                     self.bett1=self.t1nii #save for later image creation
                    
@@ -982,6 +1010,30 @@ class RestPipe:
                     ants.image_write(normalized, self.subjcorrlabel)
                     self.corrlabel=self.subjcorrlabel
                     
+                    #Apply the transforms to csf file
+                    logging.info('Normalizing CSF mask')
+                    fixed = ants.image_read(self.t1nii) #mean func
+                    moving=ants.image_read(self.refcsf) #label file in template space 
+                    moving=ants.resample_image(moving, fixed.shape,True,0)
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=standard2t1[0])
+                    fixed = ants.image_read(self.meanfuncbrain) #mean func
+                    moving=ants.resample_image(normalized, fixed.shape,True,0)
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
+                    ants.image_write(normalized, self.subjrefcsf)
+                    self.refcsf=self.subjrefcsf
+                    
+                    #Apply the transforms to wm file
+                    logging.info('Normalizing WM mask')
+                    fixed = ants.image_read(self.t1nii) #mean func
+                    moving=ants.image_read(self.refwm) #label file in template space 
+                    moving=ants.resample_image(moving, fixed.shape,True,0)
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=standard2t1[0])
+                    fixed = ants.image_read(self.meanfuncbrain) #mean func
+                    moving=ants.resample_image(normalized, fixed.shape,True,0)
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
+                    ants.image_write(normalized, self.subjrefwm)
+                    self.refwm=self.subjrefwm
+                    
                     #update bold despite no transformation
                     oldnii=ants.image_read(self.thisnii)
                     ants.image_write(normalized, out_file)
@@ -1015,11 +1067,28 @@ class RestPipe:
                     tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff')
                     transformmat = tx_template2func['fwdtransforms']
                     
+                    #normalize label file
                     logging.info('Normalizing label file')
                     moving=ants.image_read(self.corrlabel) #label file in template space 
                     moving=ants.resample_image(moving, fixed.shape,True,0)
                     normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
                     ants.image_write(normalized, self.subjcorrlabel)
+                    self.corrlabel=self.subjcorrlabel
+                    
+                    #normalize csf file
+                    logging.info('Normalizing CSF mask')
+                    moving=ants.image_read(self.refcsf) #label file in template space 
+                    moving=ants.resample_image(moving, fixed.shape,True,0)
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
+                    ants.image_write(normalized, self.subjrefcsf)
+                    self.refcsf=self.subjrefcsf
+                    #normalize wm file
+                    logging.info('Normalizing WM mask')
+                    moving=ants.image_read(self.refwm) #label file in template space 
+                    moving=ants.resample_image(moving, fixed.shape,True,0)
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
+                    ants.image_write(normalized, self.subjrefwm)
+                    self.refwm=self.subjrefwm                
                     
                     #update bold despite no transfomation
                     oldnii=ants.image_read(self.thisnii)
@@ -1155,6 +1224,8 @@ class RestPipe:
                 self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
                 self.boldcoregistered=newfile #out_file = newfile + '.nii.gz'
+                self.subjrefcsf=os.path.join(self.regoutpath,'WMinT1space'+'.nii.gz')
+                self.subjrefwm=os.path.join(self.regoutpath,'CSFinT1space'+'.nii.gz')
                           
                 #grab skull on t1 for fnirt
                 if '3' not in self.steps:
@@ -1198,11 +1269,26 @@ class RestPipe:
                 subprocess.Popen(thisprocstr,shell=True).wait()
                 
                 #apply the transform
-                logging.info('creating normalized labels %s' % (newprefix))
+                logging.info('creating normalized labels %s' % (self.subjcorrlabel))
                 thisprocstr = str("applywarp --ref=" + self.bett1 + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
                 self.corrlabel=self.subjcorrlabel            
+                
+                #apply the transform
+                logging.info('creating normalized CSF mask %s' % (self.subjrefcsf))
+                thisprocstr = str("applywarp --ref=" + self.bett1 + " --in=" + self.corrlabel + " --out=" + self.subjrefcsf + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz'))
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+                self.refcsf=self.subjrefcsf  
+                
+                #apply the transform
+                logging.info('creating normalized WM mask %s' % (self.subjrefwm))
+                thisprocstr = str("applywarp --ref=" + self.bett1 + " --in=" + self.corrlabel + " --out=" + self.subjrefwm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz'))
+                logging.info('running: ' + thisprocstr)
+                subprocess.Popen(thisprocstr,shell=True).wait()
+                self.refwm=self.subjrefwm  
+                
                 
                 #skull strip normalized template for visualization purposes
                 if os.path.isfile(self.templatenormalized + '.nii.gz'):
@@ -1252,6 +1338,8 @@ class RestPipe:
             elif self.space is 'BOLD':
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
+                self.subjrefcsf=os.path.join(self.regoutpath,'WMinBOLDspace'+'.nii.gz')
+                self.subjrefwm=os.path.join(self.regoutpath,'CSFinBOLDspace'+'.nii.gz')
                 if self.t1nii is not None:
                     self.t1coregistered=os.path.join(self.regoutpath,'t1coregistered')
                     self.templateont1=os.path.join(self.regoutpath,'templateont1')
@@ -1299,17 +1387,31 @@ class RestPipe:
                     subprocess.Popen(thisprocstr,shell=True).wait()
                 
                     #apply the transform
-                    logging.info('creating normalized template %s' % (newprefix))
+                    logging.info('creating normalized template %s' % (self.templatenormalized))
                     thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.templatenormalized + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     
                     #apply the transform
-                    logging.info('creating normalized labels %s' % (newprefix))
+                    logging.info('creating normalized labels %s' % (self.subjcorrlabel))
                     thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.corrlabel=self.subjcorrlabel
+                    
+                    #apply the transform
+                    logging.info('creating normalized CSF mask %s' % (self.subjrefcsf))
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refcsf + " --out=" + self.subjrefwm + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    self.refcsf=self.subjrefcsf
+                    
+                    #apply the transform
+                    logging.info('creating normalized WM mask %s' % (self.subjrefwm))
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refwm + " --out=" + self.subjrefcsf + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    self.refwm=self.subjrefwm
                     
                     #skull strip normalized template for visualization purposes
                     self.templatenormalized=self.templatenormalized + '.nii.gz'
@@ -1372,12 +1474,26 @@ class RestPipe:
                     subprocess.Popen(thisprocstr,shell=True).wait()
     
                     if os.path.isfile( self.templatenormalized + '.mat' ):
-                        #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
-                        logging.info('applying transformation matrix to 4D data')
+                        #then apply to labels
+                        logging.info('applying transformation matrix label file')
                         thisprocstr = str("flirt -in " + self.corrlabel+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized+ '.mat') + " -out " + self.subjcorrlabel)
                         logging.info('running: ' + thisprocstr)
                         subprocess.Popen(thisprocstr,shell=True).wait()
-                        self.subjcorrlabel=self.corrlabel
+                        self.corrlabel=self.subjcorrlabel
+                        
+                        #then apply to csf mask
+                        logging.info('applying transformation matrix CSF mask')
+                        thisprocstr = str("flirt -in " + self.refcsf+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized+ '.mat') + " -out " + self.subjrefcsf)
+                        logging.info('running: ' + thisprocstr)
+                        subprocess.Popen(thisprocstr,shell=True).wait()
+                        self.refcsf=self.subjrefcsf
+                        
+                        #then apply wm mask
+                        logging.info('applying transformation matrix to WM mask')
+                        thisprocstr = str("flirt -in " + self.refwm+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized+ '.mat') + " -out " + self.subjrefwm)
+                        logging.info('running: ' + thisprocstr)
+                        subprocess.Popen(thisprocstr,shell=True).wait()
+                        self.refwm=self.subjrefwm
                     else:
                         logging.info('Creation of initial flirt matrix failed.')
                         raise SystemExit()
