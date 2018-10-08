@@ -60,7 +60,7 @@ Skull stripping using FSL's [BET](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/BET/Use
 Normalization the data using FSL's [FLIRT](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FLIRT) + [FNIRT](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FNIRT) or [ANTs](https://github.com/ANTsX/ANTs). 
 
 - If no options are specified, then the default template is the standard MNI152_T1_2mm_brain. If you have a specific template, you can define it with ```–ref```. If using your own template, you must also specify white matter, gray matter, CSF and brain masks for that template. These can be obtained using FSL's [FAST](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FAST) segmentation
-- You can choose to calculate the derivatives in each individual subject's space with ```–space [T1/BOLD/Template] (default is 'Template'```. This is useful when group level voxel localization is not needed as it avoids unecessary manipulation of the BOLD data.
+- You can choose to calculate the derivatives in each individual subject's space with ```–space [T1/BOLD/Template]```. Default is 'Template'. Using 'BOLD' or 'T1' space is useful when group level voxel localization is not needed, as it avoids unecessary manipulation of the BOLD data.
 
 - FSL (default):
   - If you've provided at T1 anatomical image then two steps are taken:
