@@ -95,7 +95,7 @@ Band-pass filtering using AFNI's [3dBandpass](https://afni.nimh.nih.gov/pub/dist
   - For details on why AFNI's badnpass filtering is used, please check [this discussion](https://neurostars.org/t/bandpass-filtering-different-outputs-from-fsl-and-nipype-custom-function/824).
 
 **Step 8**
-Smoothing with a FWHM gaussian kernel.
+Smoothing with a FWHM gaussian kernel using FSL's fslmaths.
 
 The default width is 5 mm.
 
