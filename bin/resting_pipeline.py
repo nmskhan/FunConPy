@@ -1344,8 +1344,8 @@ class RestPipe:
             elif self.space == 'BOLD':
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
-                self.subjrefcsf=os.path.join(self.regoutpath,'WMinBOLDspace'+'.nii.gz')
-                self.subjrefwm=os.path.join(self.regoutpath,'CSFinBOLDspace'+'.nii.gz')
+                self.subjrefcsf=os.path.join(self.regoutpath,'CSFinBOLDspace'+'.nii.gz')
+                self.subjrefwm=os.path.join(self.regoutpath,'WMinBOLDspace'+'.nii.gz')
                 
                 #update bold despite no transformation
                 oldnii=nibabel.load(self.thisnii)
