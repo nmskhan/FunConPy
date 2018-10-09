@@ -1409,7 +1409,7 @@ class RestPipe:
                     
                     #apply the transform
                     logging.info('creating normalized labels %s' % (self.subjcorrlabel))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.corrlabel=self.subjcorrlabel
@@ -1483,7 +1483,7 @@ class RestPipe:
                 
                 else:
                     #use the functional to get the matrix
-                    thisprocstr = str("flirt -in " +  self.flirtref + " -ref " + self.thisnii + " -out " + self.tempatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
+                    thisprocstr = str("flirt -in " +  self.flirtref + " -ref " + self.thisnii + " -out " + self.templatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
     
@@ -1513,6 +1513,7 @@ class RestPipe:
                         raise SystemExit()
                         
                     #pictures for normalization
+                    self.templatenormalized = self.templatenormalized +'.nii.gz'
                     self.meanboldnormalized =  mean_img(self.thisnii)
                     display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
