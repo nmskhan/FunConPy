@@ -713,7 +713,7 @@ class RestPipe:
             #pictures to check bold skull strip
             self.meanbold = mean_img(self.thisnii)
             self.meanbetbold = mean_img(str(newfile+'.nii.gz'))
-            display = plotting.plot_img((self.meanbold), cmap=plt.cm.Greens)
+            display = plotting.plot_img((self.meanbold), cmap=plt.cm.Greens, cut_coords=(0,0,0))
             display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.6)
             display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
             
@@ -737,7 +737,7 @@ class RestPipe:
                             
             #pictures to check bold skull strip
             self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
-            display = plotting.plot_img(os.path.join(self.outpath,'mean_func.nii.gz'), cmap=plt.cm.Greens)
+            display = plotting.plot_img(os.path.join(self.outpath,'mean_func.nii.gz'), cmap=plt.cm.Greens, cut_coords=(0,0,0))
             display.add_overlay(self.meanfuncbrain, cmap=plt.cm.Reds, alpha=0.6)
             display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
 
@@ -759,12 +759,15 @@ class RestPipe:
             newfile = os.path.join(self.outpath, newprefix)
             self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
             self.maskfile = os.path.join(self.outpath, self.maskprefix)
+            self.maskbinaryfile = self.maskfile + "_binary"
             if options.afnistrip is not None:
                 logging.info('Skull stripping anatomical using AFNI.')
                 t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                 t1mask.run()
                 t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'),expr='a*step(b)', out_file = str(newfile + '.nii.gz'), terminal_output='none' )
                 t1strip.run()
+                t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
+                t1maskbinary.run()
                                 
             else:
                 logging.info('Skull stripping anatomical using BET.')
@@ -779,7 +782,7 @@ class RestPipe:
                 logging.info('Skull stripping completed: ' + self.t1nii )
                 
                 #pictures to check t1 skull strip
-                display = plotting.plot_img(self.unbett1, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.unbett1, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'SS_T1.png'))
             else:
@@ -850,16 +853,16 @@ class RestPipe:
                     #Images to check normalization
                     #bold on t1
                     self.meanboldcoregistered =  mean_img(self.boldcoregistered)
-                    display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
                     #t1 on template
-                    display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'T1toTEMPLATE.png'))
                     #bold on template
                     self.meanboldnormalized =  mean_img(out_file)
-                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
            
@@ -877,7 +880,7 @@ class RestPipe:
                     #Images to check normalization
                     self.meanboldnormalized =  mean_img(out_file)
                     #bold on template
-                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
                     
@@ -944,19 +947,19 @@ class RestPipe:
                 #make images to check normalization
                 self.meanboldcoregistered =  mean_img(self.boldcoregistered)
                 #bold on t1  
-                display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
                 #template on t1
-                display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1.png'))
                 #template on bold in t1
-                display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1onBOLD.png'))
                 #labels on bold in t1
-                display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.3)
                 display.savefig(os.path.join(self.regoutpath, 'LABELStoT1onBOLD.png'))
                 
@@ -1041,19 +1044,19 @@ class RestPipe:
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
                     #t1 on bold
-                    display = plotting.plot_img(self.t1coregistered, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.t1coregistered, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'T1toBOLD.png'))
                     #template on t1
-                    display = plotting.plot_img(self.templateont1, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.templateont1, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1.png'))
                     #template on bold
-                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoBOLD.png'))
                     #labels on bold
-                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
                     
@@ -1093,11 +1096,11 @@ class RestPipe:
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
                     #template on bold
-                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoBOLD.png'))
                     #labels on bold
-                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
                 
@@ -1116,12 +1119,15 @@ class RestPipe:
                         self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
                         self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
                         self.maskfile = os.path.join(self.outpath, self.maskprefix)
+                        self.maskbinaryfile = self.maskfile + "_binary"
                         if options.afnistrip is not None:
                             logging.info('Skull stripping T1 using AFNI for FLIRT.')
                             t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                             t1mask.run()
                             t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.bett1, terminal_output='none' )
                             t1strip.run()
+                            t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
+                            t1maskbinary.run()
                         else:
                             logging.info('Skull stripping T1 using BET for FLIRT.')
                             thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
@@ -1176,20 +1182,20 @@ class RestPipe:
                     #bold on t1
                     self.boldcoregistered = self.boldcoregistered + '.nii.gz'
                     self.meanboldcoregistered =  mean_img(self.boldcoregistered)
-                    display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
-                    display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
+                    display = plotting.plot_img(self.bett1, cmap=plt.cm.Greens, cut_coords=(0,0,0))
+                    display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
                     #t1 on template
-                    display = plotting.plot_img(self.t1normalizedbrain, cmap=plt.cm.Greens)
-                    display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.4)
+                    display = plotting.plot_img(self.t1normalizedbrain, cmap=plt.cm.Greens, cut_coords=(0,0,0))
+                    display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'T1toTEMPLATE.png'))
                     #bold on template
                     self.meanboldnormalized =  mean_img(out_file)
-                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
                     #T1 fnirt skull strip
-                    display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(os.path.join(self.t1normalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_T1.png'))
                     self.t1nii=self.t1normalized
@@ -1212,7 +1218,7 @@ class RestPipe:
                         
                     #pictures for normalization
                     self.meanboldnormalized =  mean_img(out_file)
-                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.flirtref, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
 
@@ -1231,12 +1237,15 @@ class RestPipe:
                     self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
                     self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
                     self.maskfile = os.path.join(self.outpath, self.maskprefix)
+                    self.maskbinaryfile = self.maskfile + "_binary"
                     if options.afnistrip is not None:
                         logging.info('Skull stripping T1 using AFNI for FLIRT.')
                         t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                         t1mask.run()
                         t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.bett1, terminal_output='none' )
                         t1strip.run()
+                        t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
+                        t1maskbinary.run()
                     else:
                         logging.info('Skull stripping T1 using BET for FLIRT.')
                         thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
@@ -1260,8 +1269,8 @@ class RestPipe:
 
                 #fnirt the standard to t1
                 logging.info('fnirt standard to t1')
-                self.maskfilepath = self.maskfile + '.nii.gz'
-                thisprocstr = str("fnirt --ref=" + self.unbett1 + " --refmask=" + self.maskfilepath + " --in=" + self.fnirtref + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templatenormalized + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
+                self.maskbinaryfilepath = self.maskbinaryfile + '.nii.gz'
+                thisprocstr = str("fnirt --ref=" + self.unbett1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.fnirtref + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templatenormalized + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
                 
@@ -1310,23 +1319,23 @@ class RestPipe:
                 self.boldcoregistered = self.boldcoregistered + '.nii.gz'
                 #bold on t1  
                 self.meanboldcoregistered =  mean_img(self.boldcoregistered)
-                display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'BOLDtoT1.png'))
                 #template on t1
-                display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1.png'))
                 #template on bold in t1
-                display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1onBOLD.png'))
                 #labels on bold in t1
-                display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(self.meanboldcoregistered, cmap=plt.cm.Reds, alpha=0.3)
                 display.savefig(os.path.join(self.regoutpath, 'LABELStoT1onBOLD.png'))
                 #Template fnirt skull strip
-                display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(os.path.join(self.templatenormalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATE.png'))
 
@@ -1354,12 +1363,16 @@ class RestPipe:
                         self.bett1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
                         self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
                         self.maskfile = os.path.join(self.outpath, self.maskprefix)
+                        self.maskbinaryfile = self.maskfile + "_binary"
                         if options.afnistrip is not None:
                             logging.info('Skull stripping T1 using AFNI for FLIRT.')
                             t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                             t1mask.run()
                             t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.bett1, terminal_output='none' )
                             t1strip.run()
+                            t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
+                            t1maskbinary.run()
+                            
                         else:
                             logging.info('Skull stripping T1 using BET for FLIRT.')
                             thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
@@ -1383,8 +1396,8 @@ class RestPipe:
         
                     #fnirt the standard to t1
                     logging.info('fnirt standard to t1')
-                    self.maskfilepath = self.maskfile + '.nii.gz'
-                    thisprocstr = str("fnirt --ref=" + self.unbett1 + " --refmask=" + self.maskfilepath + " --in=" + self.fnirtref + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templateont1 + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
+                    self.maskbinaryfilepath = self.maskbinaryfile + '.nii.gz'
+                    thisprocstr = str("fnirt --ref=" + self.unbett1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.fnirtref + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templateont1 + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                 
@@ -1441,32 +1454,31 @@ class RestPipe:
                     
                     #make images to check normalization
                     self.meanbold =  mean_img(self.thisnii)
-                    self.t1coregistered= self.t1coregistered +' .nii.gz'
-                    self.templateont1=self.templateont1+ '.nii.gz'
+                    self.t1coregistered= self.t1coregistered + '.nii.gz'
                     #t1 on bold
-                    display = plotting.plot_img(self.t1coregistered, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.t1coregistered, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'T1toBOLD.png'))
                     #template on t1
-                    display = plotting.plot_img(self.templateont1brain, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.templateont1brain, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.bett1, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoT1.png'))
                     #template on bold
-                    display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.templatenormalizedbrain, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoBOLD.png'))
                     #labels on bold
-                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
                     #Template fnirt skull strip
-                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
-                    display.add_overlay(os.path.join(self.templatenormalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
+                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
+                    display.add_overlay(os.path.join(self.templatenormalizedbrain), cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATE.png'))
                     #Template fnirt skull strip
-                    display = plotting.plot_img(self.templateont1, cmap=plt.cm.Greens)
-                    display.add_overlay(os.path.join(self.templateont1brain), cmap=plt.cm.Reds, alpha=0.4)
-                    display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATEonT1.png'))
+                    display = plotting.plot_img(self.templateont1, cmap=plt.cm.Greens, cut_coords=(0,0,0))
+                    display.add_overlay(os.path.join(self.templateont1brain), cmap=plt.cm.Reds, alpha=0.3)
+                    display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATEinT1.png'))
                
                 
                 else:
@@ -1502,13 +1514,13 @@ class RestPipe:
                         
                     #pictures for normalization
                     self.meanboldnormalized =  mean_img(self.thisnii)
-                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'TEMPLATEtoBOLD.png'))
                     
                     #pictures for normalization
                     self.meanboldnormalized =  mean_img(self.thisnii)
-                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens)
+                    display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
                    
@@ -1623,10 +1635,10 @@ class RestPipe:
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
 
-        if self.t1nii is not None:
-            bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.t1nii))
+        if self.t1nii is None or self.space =='BOLD':
+            bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.thisnii))
         else:
-            bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none')
+            bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.t1nii))
         bandpass.run()
 
         if os.path.isfile(newfile):
