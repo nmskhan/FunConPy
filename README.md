@@ -61,18 +61,19 @@ You can choose one of two methods to perform skull stripping using the option ``
 Normalization the data using FSL's [FLIRT](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FLIRT) + [FNIRT](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FNIRT) or [ANTs](https://github.com/ANTsX/ANTs). 
 
 You can choose one of two methods for registration using the option ```--regmethod=fsl/ants```:
+
 - FSL (default):
-  - If you've provided at T1 anatomical image then this sequence is followed:
-    - Func to T1 coregistration (Affine registration using FLIRT with 12 dof)
-    - T1 to Template (Nonlinear normalization with FNIRT)
+  - If you've provided at T1 anatomical image then two steps are taken:
+    - Affine registration using FLIRT with 12 dof
+    - Nonlinear normalization with FNIRT
   - If a T1 anatomical image is not provided then only one one step is taken:
-    - Func to MNI (Affine normalization using FLIRT with 12 dof)
+    - Affine normalization using FLIRT with 12 dof
 - ANTs:
   - If you've provided at T1 anatomical image then this sequence is followed:
     - Func to T1 coregistration (Affine registration with "BOLDAffine" ANTs tranform)
     - T1 to Template (Nonlinear normalization with SyN)
   - If a T1 anatomical image is not provided then one one step is taken:
-    - Func to MNI (Affine + nonlinear normalization with "SyNBOLDAffine" ANTs tranform)
+    - Affine + nonlinear normalization with "SyNBOLDAffine" ANTs tranform
  - For a comparision between methods please see Klein A. et. al (2009) (doi:10.1016/j.neuroimage.2008.12.037)
  
 - If no other options are specified, then the default template is the standard MNI152_T1_2mm_brain. If you have a specific template, you can define it with ```–ref```. If using your own template, you must also specify white matter, gray matter, CSF and brain masks for that template. These can be obtained using FSL's [FAST](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki/FAST) segmentation.
@@ -95,7 +96,7 @@ Band-pass filtering using AFNI's [3dBandpass](https://afni.nimh.nih.gov/pub/dist
   - For details on why AFNI's badnpass filtering is used, please check [this discussion](https://neurostars.org/t/bandpass-filtering-different-outputs-from-fsl-and-nipype-custom-function/824).
 
 **Step 8**
-Smoothing with a FWHM gaussian kernel.
+Smoothing with a FWHM gaussian kernel using FSL's fslmaths.
 
 The default width is 5 mm.
 
