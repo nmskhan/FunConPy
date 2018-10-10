@@ -1228,7 +1228,6 @@ class RestPipe:
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
                 self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain'+'.nii.gz')
                 self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
-                self.boldcoregistered=newfile #out_file = newfile + '.nii.gz'
                 self.subjrefcsf=os.path.join(self.regoutpath,'WMinT1space'+'.nii.gz')
                 self.subjrefwm=os.path.join(self.regoutpath,'CSFinT1space'+'.nii.gz')
                           
@@ -1260,10 +1259,21 @@ class RestPipe:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
-                thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.thisnii + " -out " + self.boldcoregistered + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
+                thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.bett1 + " -out " + newfile + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
-
+                
+                #apply to make it 4d
+                if os.path.isfile( os.path.join(self.regoutpath,'boldcoregistered.mat') ):
+                    #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
+                    logging.info('applying transformation matrix to 4D data')
+                    thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.bett1 + " -applyxfm -init " + (os.path.join(self.regoutpath,'boldcoregistered.mat')) + " -out " + newfile )
+                    logging.info('running: ' + thisprocstr)
+                    subprocess.Popen(thisprocstr,shell=True).wait()
+                else:
+                    logging.info('Creation of initial flirt matrix failed.')
+                    raise SystemExit()
+                
                 #flirt the standard to t1
                 logging.info('flirt standard to t1')
                 thisprocstr = str("flirt -ref " + self.bett1 + " -in " + self.flirtref + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
@@ -1319,7 +1329,7 @@ class RestPipe:
 
                 
                 #make images to check normalization
-                self.boldcoregistered = self.boldcoregistered + '.nii.gz'
+                self.boldcoregistered = newfile + '.nii.gz'
                 #bold on t1  
                 self.meanboldcoregistered =  mean_img(self.boldcoregistered)
                 display = plotting.plot_img(self.meanboldcoregistered, cmap=plt.cm.Greens, cut_coords=(0,0,0))
