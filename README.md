@@ -287,5 +287,5 @@ Options:
 # License
 Developed by Vasco Diogo.
 
-Originaly adapted from https://wiki.biac.duke.edu/biac:analysis:resting_pipeline, under a [GNU General Public License version 3](https://www.gnu.org/licenses/gpl-3.0.en.html) license. Originally created by Chou et al. AJNAR(2012), May; 33(5): 833–838.
+Pipeline adapted from https://wiki.biac.duke.edu/biac:analysis:resting_pipeline, under a [GNU General Public License version 3](https://www.gnu.org/licenses/gpl-3.0.en.html) license. Originally created by Chou et al. AJNAR(2012), May; 33(5): 833–838.
 fcdm algorithm adapted from Dardo Tomasi, PNAS(2010), vol. 107, no. 21. 9885–9890
