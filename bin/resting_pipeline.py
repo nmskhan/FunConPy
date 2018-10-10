@@ -71,9 +71,10 @@ parser.add_option("--refgm",  action="store", type="string", dest="refgm",help="
 parser.add_option("--refbrainmask",  action="store", type="string", dest="refbrainmask",help="pointer to brain mask of reference image if not using standard brain", metavar="FILE")
 parser.add_option("--fwhm",  action="store", type="int", dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
 parser.add_option("--refacpoint",  action="store", type="string", dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
-parser.add_option("--afnistrip",  action="store_true", dest="afnistrip",help="Use AFNI for skull stripping?")
+parser.add_option("--skullstrip",  action="store",type="choice", choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data Default is 'bet'.", metavar="bet/afni", default='bet')
 parser.add_option("--fval",  action="store", type="float", dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
 parser.add_option("--anatfval",  action="store", type="float", dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
+parser.add_option("--regmethod",  action="store",type="choice", choices=['ants', 'fsl'], dest="regmethod",help="Register and normalize images using 'ants' or 'fsl'. Default is 'fsl'.", metavar="ants/fsl", default='fsl')
 parser.add_option("--detrend",  action="store", type="int", dest="detrend",help="polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2", default='2')
 parser.add_option("--lpfreq",  action="store", type="float", dest="lpfreq",help="frequency cutoff for lowpass filtering in HZ.  default is .08hz", metavar="0.08", default='0.08')
 parser.add_option("--hpfreq",  action="store", type="float", dest="hpfreq",help="frequency cutoff for highpass filtering in HZ.  default is .01hz", metavar="0.01", default='0.01')
@@ -91,7 +92,6 @@ parser.add_option("--scrubop",  action="store", choices=('and', 'or'), dest="scr
 parser.add_option("--powerscrub", action="store_true", dest="powerscrub", help="Equivalent to specifying --fdthreshold=0.5 --fdnumneighbors=0 --dvarsthreshold=0.5% --dvarsnumneigbhors=0 --scrubop='and', to mimic the method used in the Power et al. article.  Any conflicting options specified before or after this will override these.", default=False)
 parser.add_option("--scrubkeepminvols",  action="store", type="int", dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
 parser.add_option("--fcdmthresh",  action="store", type="float", dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
-parser.add_option("--ants",  action="store_true", dest="ants",help="Use ANTS for registration?")
 parser.add_option("--space",  action="store",type="choice", choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="choice of space", default='Template')
 parser.add_option("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
 
@@ -318,9 +318,9 @@ class RestPipe:
                 print("Invalid functional skull stripping threshold: " + self.fval)
                 raise SystemExit()
         else:
-            if options.afnistrip is not None:
+            if options.skullstrip == 'afni':
                 self.fval = 0.5
-            else:
+            elif options.skullstrip == 'bet':
                 self.fval = 0.4
         
         
@@ -330,10 +330,10 @@ class RestPipe:
                 print("Invalid anatomical skull stripping threshold: " + self.anatfval)
                 raise SystemExit()
         else:
-            if options.afnistrip is not None:
+            if options.skullstrip == 'afni':
                 self.anatfval = 0.6
                 self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
-            else:
+            elif options.skullstrip == 'bet':
                 self.anatfval = 0.5         
 
         self.sliceorder = options.sliceorder
@@ -530,7 +530,7 @@ class RestPipe:
                 logging.info("slice order not found. please use --sliceorder option")
                 raise SystemExit()
         
-        if '3' not in self.steps and '4' in self.steps and self.t1nii is not None and options.ants is None:
+        if '3' not in self.steps and '4' in self.steps and self.t1nii is not None and options.regmethod == 'fsl':
             print('WARNING: FNIRT requires T1 with skull. Please make sure T1 has skull and BOLD does not.') 
             
         # If running step 9b by itself, check corrts now
@@ -705,7 +705,7 @@ class RestPipe:
         newprefix = self.prefix + "_brain"
         newfile = os.path.join(self.outpath, newprefix)
 
-        if options.afnistrip is not None:
+        if options.skullstrip == 'afni':
             logging.info('Skull stripping func using AFNI')
             boldstrip = afni.Automask(in_file=self.thisnii, out_file=os.path.join(self.outpath,'func_brain_mask.nii.gz'), brain_file=str(newfile + '.nii.gz'), clfrac=self.fval, terminal_output='none')
             boldstrip.run()
@@ -717,7 +717,7 @@ class RestPipe:
             display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.6)
             display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
             
-        else:
+        elif options.skullstrip == 'bet':
             logging.info('Skull stripping func using BET')
             #first create mean_func
             thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func') )
@@ -760,7 +760,8 @@ class RestPipe:
             self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
             self.maskfile = os.path.join(self.outpath, self.maskprefix)
             self.maskbinaryfile = self.maskfile + "_binary"
-            if options.afnistrip is not None:
+            
+            if options.skullstrip == 'afni':
                 logging.info('Skull stripping anatomical using AFNI.')
                 t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                 t1mask.run()
@@ -768,13 +769,13 @@ class RestPipe:
                 t1strip.run()
                 t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
                 t1maskbinary.run()
-                                
-            else:
+            elif options.skullstrip == 'bet':
                 logging.info('Skull stripping anatomical using BET.')
                 thisprocstr = str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval) + " -m")
                 logging.info('running: ' + thisprocstr)
                 subprocess.Popen(thisprocstr,shell=True).wait()
-        
+                self.maskbinaryfile=newfile + "_mask"
+                
             if os.path.isfile( newfile + ".nii.gz" ):
                 self.unbett1=self.t1nii
                 self.t1nii = newfile + ".nii.gz"
@@ -798,7 +799,7 @@ class RestPipe:
         newfile = os.path.join(self.outpath, newprefix)           
         out_file = newfile + '.nii.gz'
 	#ANTs
-        if options.ants is not None:          
+        if options.regmethod == 'ants':          
             import ants
             if os.path.isfile(self.meanfuncbrain) == False:
                     #first create mean_func
@@ -1106,7 +1107,7 @@ class RestPipe:
                 
 
         #FSL
-        else:
+        elif options.regmethod == 'fsl':
             if self.space == 'Template':
                 if self.t1nii is not None:
                     self.t1normalized=os.path.join(self.regoutpath,'t1normalized')
@@ -1120,7 +1121,7 @@ class RestPipe:
                         self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
                         self.maskfile = os.path.join(self.outpath, self.maskprefix)
                         self.maskbinaryfile = self.maskfile + "_binary"
-                        if options.afnistrip is not None:
+                        if options.skullstrip == 'afni':
                             logging.info('Skull stripping T1 using AFNI for FLIRT.')
                             t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                             t1mask.run()
@@ -1128,11 +1129,12 @@ class RestPipe:
                             t1strip.run()
                             t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
                             t1maskbinary.run()
-                        else:
+                        elif options.skullstrip == 'bet':
                             logging.info('Skull stripping T1 using BET for FLIRT.')
                             thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
                             logging.info('running: ' + thisprocstr)
                             subprocess.Popen(thisprocstr,shell=True).wait()
+                            self.maskbinaryfile=newfile + "_mask"
                     else:
                         self.bett1=self.t1nii 
                         
@@ -1164,11 +1166,11 @@ class RestPipe:
                     #skull strip normalized t1 for visualization purposes
                     self.t1normalized=self.t1normalized+'.nii.gz'
                     if os.path.isfile(self.t1normalized):
-                        if options.afnistrip is not None:
+                        if options.skullstrip == 'afni':
                             logging.info('Skull stripping normalized T1 using AFNI.')
                             t1strip = afni.SkullStrip(in_file=self.t1normalized, out_file=self.t1normalizedbrain, terminal_output='none', args=self.shrinkfac)
                             t1strip.run()
-                        else:
+                        elif options.skullstrip == 'bet':
                             logging.info('Skull stripping normalized T1 using BET.')
                             thisprocstr = str("bet " + self.t1normalized + " " + self.t1normalizedbrain + " -f " + str(self.anatfval))
                             logging.info('running: ' + thisprocstr)
@@ -1238,7 +1240,7 @@ class RestPipe:
                     self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
                     self.maskfile = os.path.join(self.outpath, self.maskprefix)
                     self.maskbinaryfile = self.maskfile + "_binary"
-                    if options.afnistrip is not None:
+                    if options.skullstrip == 'afni':
                         logging.info('Skull stripping T1 using AFNI for FLIRT.')
                         t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                         t1mask.run()
@@ -1246,11 +1248,12 @@ class RestPipe:
                         t1strip.run()
                         t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
                         t1maskbinary.run()
-                    else:
+                    elif options.skullstrip == 'bet':
                         logging.info('Skull stripping T1 using BET for FLIRT.')
                         thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
                         logging.info('running: ' + thisprocstr)
                         subprocess.Popen(thisprocstr,shell=True).wait()
+                        self.maskbinaryfile=newfile + "_mask"
                 else:
                     self.bett1=self.t1nii 
                     
@@ -1300,11 +1303,11 @@ class RestPipe:
                 if os.path.isfile(self.templatenormalized + '.nii.gz'):
                     self.t1nii = self.bett1
                     self.templatenormalized=self.templatenormalized+'.nii.gz'
-                    if options.afnistrip is not None:
+                    if options.skullstrip == 'afni':
                         logging.info('Skull stripping normalized template using AFNI.')
                         t1strip = afni.SkullStrip(in_file=self.templatenormalized, out_file=self.templatenormalizedbrain, terminal_output='none', args=self.shrinkfac)
                         t1strip.run()
-                    else:
+                    elif options.skullstrip == 'bet':
                         logging.info('Skull stripping normalized template using BET.')
                         thisprocstr = str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval))
                         logging.info('running: ' + thisprocstr)
@@ -1364,20 +1367,20 @@ class RestPipe:
                         self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
                         self.maskfile = os.path.join(self.outpath, self.maskprefix)
                         self.maskbinaryfile = self.maskfile + "_binary"
-                        if options.afnistrip is not None:
+                        if options.skullstrip == 'afni':
                             logging.info('Skull stripping T1 using AFNI for FLIRT.')
                             t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                             t1mask.run()
                             t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.bett1, terminal_output='none' )
                             t1strip.run()
                             t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
-                            t1maskbinary.run()
-                            
-                        else:
+                            t1maskbinary.run()   
+                        elif options.skullstrip == 'bet':
                             logging.info('Skull stripping T1 using BET for FLIRT.')
                             thisprocstr = str("bet " + self.t1nii + " " + self.bett1 + " -f " + str(self.anatfval) + " -m")
                             logging.info('running: ' + thisprocstr)
                             subprocess.Popen(thisprocstr,shell=True).wait()
+                            self.maskbinaryfile=newfile + "_mask"
                     else:
                         self.bett1=self.t1nii 
                 
@@ -1403,27 +1406,27 @@ class RestPipe:
                 
                     #apply the transform
                     logging.info('creating normalized template %s' % (self.templatenormalized))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.templatenormalized + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.flirtref + " --out=" + self.templatenormalized + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     
                     #apply the transform
                     logging.info('creating normalized labels %s' % (self.subjcorrlabel))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.corrlabel=self.subjcorrlabel
                     
                     #apply the transform
                     logging.info('creating normalized CSF mask %s' % (self.subjrefcsf))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refcsf + " --out=" + self.subjrefwm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refcsf + " --out=" + self.subjrefwm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.refcsf=self.subjrefcsf
                     
                     #apply the transform
                     logging.info('creating normalized WM mask %s' % (self.subjrefwm))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refwm + " --out=" + self.subjrefcsf + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --premat=" + self.t1coregistered + '.mat')
+                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.refwm + " --out=" + self.subjrefcsf + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat')
                     logging.info('running: ' + thisprocstr)
                     subprocess.Popen(thisprocstr,shell=True).wait()
                     self.refwm=self.subjrefwm
@@ -1433,13 +1436,13 @@ class RestPipe:
                     self.templateont1=self.templateont1 + '.nii.gz'
                     if os.path.isfile(self.templatenormalized) and os.path.isfile(self.templateont1):
                         self.t1nii = self.bett1
-                        if options.afnistrip is not None:
+                        if options.skullstrip == 'afni':
                             logging.info('Skull stripping coregistered + normalized template using AFNI.')
                             t1strip = afni.SkullStrip(in_file=self.templatenormalized, out_file=self.templatenormalizedbrain, terminal_output='none', args=self.shrinkfac)
                             t1strip.run()
                             t1strip = afni.SkullStrip(in_file=self.templateont1, out_file=self.templateont1brain, terminal_output='none', args=self.shrinkfac)
                             t1strip.run()
-                        else:
+                        elif options.skullstrip == 'bet':
                             logging.info('Skull stripping coregistered + normalized template using BET.')
                             thisprocstr = str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval))
                             logging.info('running: ' + thisprocstr)
