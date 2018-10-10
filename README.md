@@ -117,27 +117,29 @@ Functional connectivity density mapping.
 Takes functional data from last step and calculates how connected they are to the voxels around them. Adapted from Dardo Tomasi, PNAS(2010), vol. 107, no. 21. 9885–9890.
 
 # Usage
-
+Output of ```--help```.
 ```
 Usage: 
 resting_pipeline.py --func /path/to/run4.bxh --steps all --outpath /here/ -p func
 Program to run through Nan-kuei Chen's resting state analysis pipeline:
     steps:
-    0 - convert data to nii in LAS orientation ( we suggest LAS if you are skipping this step )
-    1 - slice time correction
-    2 - motion correction, then regress out motion parameter
-    3 - skull stripping
-    4 - normalize data
-    5 - regress out WM/CSF
-    6 - lowpass filter
-    7 - FWHM smoothing
-    8 - do parcellation and produce correlation matrix from label file or split it up:
-         8a - do parcellation from label file
-         8b - produce correlation matrix [--func option is ignored if step 7b
+    0 - Convert data to nii in LAS orientation ( we suggest LAS if you are skipping this step )
+    1 - Throwaway of initial volumes, then slice time correction
+    2 - Motion correction, then regress out motion parameter
+    3 - Skull stripping
+    4 - Normalize data
+    5 - Regress out WM/CSF
+    6 - Detrending
+    7 - Lowpass filter
+    8 - FWHM smoothing
+    9 - Do parcellation and produce correlation matrix from label file
+      * or split it up:
+         9a - Parcellation from label file
+         9b - Produce correlation matrix [--func option is ignored if step 7b
               is run by itself unless --dvarsthreshold is specified, and
               --corrts overrides default location for input parcellation
               results (outputpath/corrlabel_ts.txt)]
-    9 - functional connectivity density mapping
+    10 - Functional connectivity density mapping
 
 
 Options:
@@ -160,10 +162,8 @@ Options:
                         even=interleaved (2,4,6,1,3,5) ).  Default is to read
                         this from input image, if available.
   --tr=MSEC             TR of functional data in MSEC
-  --ref=FILE            pointer to FLIRT reference image if not using standard
-                        brain
-  --flirtmat=FILE       a pre-defined flirt matrix to apply to your functional
-                        data. (ie: func2standard.mat)
+  --ref=FILE            pointer to template reference image if not using
+                        standard brain
   --refwm=FILE          pointer to WM mask of reference image if not using
                         standard brain
   --refcsf=FILE         pointer to CSF mask of reference image if not using
@@ -172,24 +172,36 @@ Options:
                         standard brain
   --refbrainmask=FILE   pointer to brain mask of reference image if not using
                         standard brain
-  --fwhm=5              FWHM kernel smoothing in mm. default is 5mm
+  --fwhm=5              FWHM kernel smoothing in mm (default is 5)
   --refacpoint=45,63,36
                         AC point of reference image if not using standard MNI
                         brain
-  --betfval=0.4         f value to use while skull stripping. default is 0.4
-  --anatbetfval=0.5     f value to use while skull stripping ANAT. default is
-                        0.5
+  --skullstrip=bet/afni
+                        Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for
+                        skull stripping data Default is 'bet'.
+  --fval=0.4            fractional intensity threshold value to use while
+                        skull stripping bold. BET default is 0.4 [0:1].
+                        3dAutoMask default is 0.5 [0.1:0.9]. A lower value
+                        makes the mask larger.
+  --anatfval=0.5        fractional intensity threshold value to use while
+                        skull stripping ANAT. BET default is 0.5 [0:1].
+                        3dSkullStrip default is 0.6 [0:1]. A lower value makes
+                        the mask larger.
+  --regmethod=ants/fsl  Register and normalize images using 'ants' or 'fsl'.
+                        Default is 'fsl'.
+  --detrend=2           polynomial up to which to detrend signal. Default is 2
+                        (constant + linear + quadratic).
   --lpfreq=0.08         frequency cutoff for lowpass filtering in HZ.  default
                         is .08hz
-  --hpfreq=0.01         frequency cutoff for highpass filtering in HZ.  default
-                        is .01hz
+  --hpfreq=0.01         frequency cutoff for highpass filtering in HZ.
+                        default is .01hz
   --corrlabel=FILE      pointer to 3D label containing ROIs for the
                         correlation search. default is the 116 region AAL
                         label file
   --corrtext=FILE       pointer to text file containing names/indices for ROIs
                         for the correlation search. default is the 116 region
                         AAL label txt file
-  --corrts=FILE         If using step 7b by itself, this is the path to
+  --corrts=FILE         If using step 9b by itself, this is the path to
                         parcellation output (default is to use
                         OUTPATH/corrlabel_ts.txt), which will be used as input
                         to the correlation.
@@ -281,9 +293,10 @@ Options:
                         107, no. 21. Calculates the fcdm of functional data
                         from last completed step, inside a dilated gray matter
                         mask
-  --ants                Use ANTs for normalization?
-  --cleanup             Delete files from intermediate steps?
-   
+  --space=choice of space
+                        Calculate derivatives in 'BOLD', 'T1' or 'Template'
+                        space. Default is Template.
+  --cleanup             delete files from intermediate steps?
 
 ```
 
