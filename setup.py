@@ -11,7 +11,7 @@ setup(name='funconpy',
       classifiers=[
         'Development Status :: 1 - Alpha',
         'License :: OSI Approved :: GNU 3.0',
-        'Programming Language :: Python :: 3.0',
+        'Programming Language :: Python :: 3.6',
         'Topic :: rsfMRI Prerocessing :: Neuroscience',
       ],
       keywords='fMRI preprocessing functional connectivity',
@@ -19,8 +19,22 @@ setup(name='funconpy',
       author='Vasco Sa',
       license='GPL 3.0',
       packages=['funconpy'],
+      dependency_links=['https://github.com/ANTsX/ANTsPy']
       install_requires=[
-          'markdown',
+          'numpy',
+          'nibabel',
+          'scipy',
+          'networkx',
+          'nipype',
+          'nilearn',
+          'pandas',
+          'numpy',
+          'scikit-image',
+          'webcolors',
+          'matplotlib',
+          'plotly',
+          'ants'
+          
       ],
       include_package_data=True,
       zip_safe=False)
