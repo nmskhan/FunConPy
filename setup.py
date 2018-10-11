@@ -36,5 +36,10 @@ setup(name='funconpy',
           'ants'
           
       ],
+      entry_points={
+              'console_scripts': [
+                  'funconpy = funconpy.__main__:main'
+              ]
+          },
       include_package_data=True,
       zip_safe=False)
