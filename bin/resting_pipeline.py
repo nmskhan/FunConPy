@@ -32,6 +32,10 @@ import matplotlib as plt
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
+def runproc(string):
+     logging.info('running: ' + string)
+     subprocess.Popen(string,shell=True).wait()
+
 def afile(string):
     if not os.path.isfile(string):
         msg = "%r not found." % string
@@ -188,8 +192,7 @@ class RestPipe:
                     self.t1bxh = str(options.anatfile)
                 elif fileExt == '.gz' or fileExt == '.nii':
                     self.t1nii = str(options.anatfile)
-                    thisprocstr = str("fslwrapbxh " + self.t1nii)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("fslwrapbxh " + self.t1nii))
                     if os.path.isfile(self.t1nii.split('.')[0] + '.nii.gz'):
                         self.t1bxh = self.t1nii.split('.')[0] + '.nii.gz'
                     elif os.path.isfile(self.t1nii.split('.')[0] + '.nii'):
@@ -263,7 +266,7 @@ class RestPipe:
         if options.refbrainmask is not None:
             self.refbrainmask = str(options.refbrainmask)
         else:
-            self.refbrainmask = os.path.join(os.environ['FSLDIR'],'data','standard','MNI152_T1_2mm_brain_mask.nii.gz')
+            self.refbrainmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_mask.nii.gz')
         
         if options.fnirtbrainmask is not None:
             self.fnirtbrainmask = str(options.fnirtbrainmask)
@@ -278,8 +281,7 @@ class RestPipe:
         if ( '0' in self.steps ) and (self.origbxh is None) and ( self.thisnii is not None ):
             if self.tr_ms is not None:                
                 logging.info('requesting step0, but no bxh provided.  Creating one from ' + self.thisnii )
-                thisprocstr = str("fslwrapbxh " + self.thisnii)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("fslwrapbxh " + self.thisnii))
                 tmpfname = re.split('(\.nii$|\.nii\.gz$)',self.thisnii)[0] + ".bxh"
 
                 if os.path.isfile( tmpfname ):
@@ -471,16 +473,14 @@ class RestPipe:
         if '0' not in self.steps and self.needfunc:
             if self.thisnii is None:                
                 newfile = os.path.join(self.outpath,self.prefix)
-                thisprocstr = str("bxh2analyze --overwrite --niigz -s " + self.origbxh + " " + newfile)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("bxh2analyze --overwrite --niigz -s " + self.origbxh + " " + newfile))
                 if os.path.isfile(newfile + ".nii.gz"):
                     self.thisnii = newfile + ".nii.gz"
 
             if self.t1nii is None and self.t1bxh is not None:
                 fileName = self.t1bxh.split('/')[-1].split('.')[0]
                 newfile = os.path.join(self.outpath,fileName)
-                thisprocstr = str("bxh2analyze --overwrite --niigz -s " + self.t1bxh + " " + newfile)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("bxh2analyze --overwrite --niigz -s " + self.t1bxh + " " + newfile))
                 if os.path.isfile(newfile + ".nii.gz"):
                     self.t1nii = newfile + ".nii.gz"
 
@@ -580,7 +580,6 @@ class RestPipe:
                     print("You are running step 9b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,))
                     raise SystemExit()
         
-        
     #get the labels from the text file
     def grab_labels(self):
         mylabs = open(self.corrtext,'r').readlines()
@@ -599,16 +598,12 @@ class RestPipe:
     def step0(self):        
         logging.info('converting functional data')
         tempfile = os.path.join(self.tmpdir,''.join(random.choice(string.ascii_uppercase + string.digits) for x in range(10)) + '.bxh')
-        thisprocstr = str("bxhreorient --orientation=LAS " + self.origbxh + " " + tempfile)
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        runproc(str("bxhreorient --orientation=LAS " + self.origbxh + " " + tempfile))
 
         if os.path.isfile(tempfile):
             newprefix = self.prefix + "_LAS"
             newfile = os.path.join(self.outpath,newprefix)
-            thisprocstr = str("bxh2analyze --overwrite --niigz -s " + tempfile + " " + newfile)
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("bxh2analyze --overwrite --niigz -s " + tempfile + " " + newfile))
             if os.path.isfile(newfile + ".nii.gz"):
                 self.thisnii = newfile + ".nii.gz"
                 self.prevprefix = self.prefix
@@ -624,9 +619,7 @@ class RestPipe:
             logging.info('converting anatomical data')
             newprefix = "t1_LAS"
             newfile = os.path.join(self.outpath,newprefix)
-            thisprocstr = str("bxhreorient --orientation=LAS " + self.t1bxh + " " + newfile + ".bxh")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("bxhreorient --orientation=LAS " + self.t1bxh + " " + newfile + ".bxh"))
 
             if os.path.isfile(newfile + ".nii.gz"):
                 self.t1nii = newfile + ".nii.gz"
@@ -641,9 +634,7 @@ class RestPipe:
             logging.info('Disregarding acquisitions')
             newprefix = self.prefix + "_ta"
             newfile = os.path.join(self.outpath,newprefix)
-            thisprocstr = str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + newfile)
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + newfile))
             if self.tdim < self.throwaway*10:
                 print('WARNING: You are disregardign over 10% of your timepoints. Please verify that is correct')
             self.tdim = self.tdim - self.throwaway
@@ -659,9 +650,7 @@ class RestPipe:
         newprefix = self.prefix + '_st'
         newfile = os.path.join(self.outpath,newprefix)
         
-        thisprocstr = str("slicetimer -i " + self.thisnii + " -o " + newfile + " -r " +  str(self.tr_ms/1000) + " --ocustom=" + self.slicefile)
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        runproc(str("slicetimer -i " + self.thisnii + " -o " + newfile + " -r " +  str(self.tr_ms/1000) + " --ocustom=" + self.slicefile))
         
         if os.path.isfile(newfile + ".nii.gz"):
             if self.prevprefix is not None:
@@ -680,9 +669,7 @@ class RestPipe:
         newprefix = self.prefix + '_mcf'
         newfile = os.path.join(self.outpath,newprefix)
         
-        thisprocstr = str("mcflirt -in " + self.thisnii + " -o " + newfile + " -plots")
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        runproc(str("mcflirt -in " + self.thisnii + " -o " + newfile + " -plots"))
 
         if os.path.isfile(newfile + ".nii.gz") and os.path.isfile(newfile + ".par"):
             if self.prevprefix is not None:
@@ -694,12 +681,9 @@ class RestPipe:
                 self.mcparams = newfile + ".par"
             logging.info('motion correction successful: ' + self.thisnii )
             #make plots
-            thisprocstr = str("fsl_tsplot -i " + self.mcparams +  " -t 'MCFLIRT estimated rotations (radians)' -u 1 --start=1 --finish=3 -a x,y,z -w 640 -h 144 -o " + newfile + "_rot.png")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-            thisprocstr = str("fsl_tsplot -i " + self.mcparams +  " -t 'MCFLIRT estimated translations (mm)' -u 1 --start=4 --finish=6 -a x,y,z -w 640 -h 144 -o " + newfile + "_trans.png")
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("fsl_tsplot -i " + self.mcparams +  " -t 'MCFLIRT estimated rotations (radians)' -u 1 --start=1 --finish=3 -a x,y,z -w 640 -h 144 -o " + newfile + "_rot.png"))
+            runproc(str("fsl_tsplot -i " + self.mcparams +  " -t 'MCFLIRT estimated translations (mm)' -u 1 --start=4 --finish=6 -a x,y,z -w 640 -h 144 -o " + newfile + "_trans.png"))
+
         else:
             logging.info('motion correction failed')
             raise SystemExit()
@@ -726,20 +710,13 @@ class RestPipe:
         elif options.skullstrip == 'bet':
             logging.info('Skull stripping func using BET')
             #first create mean_func
-            thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func') )
-            logging.info('Running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func')))
 
             #now skull strip the mean
-            thisprocstr = "bet " + os.path.join(self.outpath,'mean_func') + " " + os.path.join(self.outpath,'mean_func_brain') + " -f " + str(self.fval) + " -m"
-            logging.info('Running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("bet " + os.path.join(self.outpath,'mean_func') + " " + os.path.join(self.outpath,'mean_func_brain') + " -f " + str(self.fval) + " -m"))
 
             #now mask full run by results
-            thisprocstr = str("fslmaths " + self.thisnii + " -mas " + os.path.join(self.outpath,'mean_func_brain_mask') + " " + newfile)
-            logging.info('Running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
-            
+            runproc(str("fslmaths " + self.thisnii + " -mas " + os.path.join(self.outpath,'mean_func_brain_mask') + " " + newfile))
                             
             #pictures to check bold skull strip
             self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
@@ -777,9 +754,7 @@ class RestPipe:
                 t1maskbinary.run()
             elif options.skullstrip == 'bet':
                 logging.info('Skull stripping anatomical using BET.')
-                thisprocstr = str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval) + " -m")
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval) + " -m"))
                 self.maskbinaryfile=newfile + "_mask"
                 
             if os.path.isfile( newfile + ".nii.gz" ):
@@ -810,9 +785,7 @@ class RestPipe:
             if os.path.isfile(self.meanfuncbrain) == False:
                     #first create mean_func
                     logging.info('Mean fuctional not found, creating mean funcional.')
-                    thisprocstr = str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain') )
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain')))
                     self.meanfuncbrain=os.path.join(self.outpath,'mean_func_brain.nii.gz')
                     
             if self.space == 'Template':
@@ -1075,9 +1048,7 @@ class RestPipe:
                             t1maskbinary.run()
                         elif options.skullstrip == 'bet':
                             logging.info('Skull stripping T1 using BET for FLIRT.')
-                            thisprocstr = str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m")
-                            logging.info('running: ' + thisprocstr)
-                            subprocess.Popen(thisprocstr,shell=True).wait()
+                            runproc(str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m"))
                             self.maskbinaryfile=newfile + "_mask"
                     else:
                         self.sst1=self.t1nii 
@@ -1085,27 +1056,19 @@ class RestPipe:
                     #use t1 to generate flirt paramters
                     #first flirt the func to the t1
                     logging.info('flirt func to t1')
-                    thisprocstr = str("flirt -ref " + self.sst1 + " -in " + self.thisnii + " -out " + self.boldcoregistered + " -omat " + self.boldcoregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("flirt -ref " + self.sst1 + " -in " + self.thisnii + " -out " + self.boldcoregistered + " -omat " + self.boldcoregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
                     
                     #flirt the t1 to standard
                     logging.info('flirt t1 to standard')
-                    thisprocstr = str("flirt -ref " + self.sstemplate + " -in " + self.sst1 + " -out " + os.path.join(self.regoutpath,'t12standard_aff') + " -omat " + os.path.join(self.regoutpath,'t12standard_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("flirt -ref " + self.sstemplate + " -in " + self.sst1 + " -out " + os.path.join(self.regoutpath,'t12standard_aff') + " -omat " + os.path.join(self.regoutpath,'t12standard_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
 
                     #fnirt the t1 to standard
                     logging.info('fnirt t1 to standard')
-                    thisprocstr = str("fnirt --ref=" + self.template + " --refmask=" + self.fnirtbrainmask + " --in=" + self.unsst1 + " --aff=" + os.path.join(self.regoutpath,'t12standard_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.t1normalized + " --cout=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef'))
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("fnirt --ref=" + self.template + " --refmask=" + self.fnirtbrainmask + " --in=" + self.unsst1 + " --aff=" + os.path.join(self.regoutpath,'t12standard_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.t1normalized + " --cout=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef')))
     
                     #apply the transform
                     logging.info('creating normalized func %s' % (newprefix))
-                    thisprocstr = str("applywarp --ref=" + self.sstemplate + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.boldcoregistered + '.mat')
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.boldcoregistered + '.mat'))
                     
                     #skull strip normalized t1 for visualization purposes
                     self.t1normalized=self.t1normalized+'.nii.gz'
@@ -1116,9 +1079,7 @@ class RestPipe:
                             t1strip.run()
                         elif options.skullstrip == 'bet':
                             logging.info('Skull stripping normalized T1 using BET.')
-                            thisprocstr = str("bet " + self.t1normalized + " " + self.t1normalizedbrain + " -f " + str(self.anatfval))
-                            logging.info('running: ' + thisprocstr)
-                            subprocess.Popen(thisprocstr,shell=True).wait()
+                            runproc(str("bet " + self.t1normalized + " " + self.t1normalizedbrain + " -f " + str(self.anatfval)))
                         self.t1nii = self.t1normalized
                     else:
                         logging.info('t1 normalization failed.')
@@ -1148,16 +1109,12 @@ class RestPipe:
                         
                 else:
                     #use the functional to get the matrix
-                    thisprocstr = str("flirt -in " +  self.thisnii + " -ref " + self.sstemplate + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("flirt -in " +  self.thisnii + " -ref " + self.sstemplate + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
     
                     if os.path.isfile( newfile + '.mat' ):
                         #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
                         logging.info('applying transformation matrix to 4D data')
-                        thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.sstemplate + " -applyxfm -init " + (newfile + '.mat') + " -out " + newfile )
-                        logging.info('running: ' + thisprocstr)
-                        subprocess.Popen(thisprocstr,shell=True).wait()
+                        runproc(str("flirt -in " + self.thisnii + " -ref " + self.sstemplate + " -applyxfm -init " + (newfile + '.mat') + " -out " + newfile))
                     else:
                         logging.info('Creation of initial flirt matrix failed.')
                         raise SystemExit()
@@ -1190,9 +1147,7 @@ class RestPipe:
                         t1maskbinary.run()
                     elif options.skullstrip == 'bet':
                         logging.info('Skull stripping T1 using BET for FLIRT.')
-                        thisprocstr = str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m")
-                        logging.info('running: ' + thisprocstr)
-                        subprocess.Popen(thisprocstr,shell=True).wait()
+                        runproc(str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m"))
                         self.maskbinaryfile=newfile + "_mask"
                 else:
                     self.sst1=self.t1nii 
@@ -1200,39 +1155,29 @@ class RestPipe:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
-                thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.sst1 + " -out " + newfile + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("flirt -in " + self.thisnii + " -ref " + self.sst1 + " -out " + newfile + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
                 
                 #apply to make it 4d
                 if os.path.isfile( os.path.join(self.regoutpath,'boldcoregistered.mat') ):
                     #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
                     logging.info('applying transformation matrix to 4D data')
-                    thisprocstr = str("flirt -in " + self.thisnii + " -ref " + self.sst1 + " -applyxfm -init " + (os.path.join(self.regoutpath,'boldcoregistered.mat')) + " -out " + newfile )
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("flirt -in " + self.thisnii + " -ref " + self.sst1 + " -applyxfm -init " + (os.path.join(self.regoutpath,'boldcoregistered.mat')) + " -out " + newfile ))
                 else:
                     logging.info('Creation of initial flirt matrix failed.')
                     raise SystemExit()
                 
                 #flirt the standard to t1
                 logging.info('flirt standard to t1')
-                thisprocstr = str("flirt -ref " + self.sst1 + " -in " + self.sstemplate + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("flirt -ref " + self.sst1 + " -in " + self.sstemplate + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
 
                 #fnirt the standard to t1
                 logging.info('fnirt standard to t1')
                 self.maskbinaryfilepath = self.maskbinaryfile + '.nii.gz'
-                thisprocstr = str("fnirt --ref=" + self.unsst1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.template + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templatenormalized + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("fnirt --ref=" + self.unsst1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.template + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templatenormalized + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef')))
                 
                 #apply the transform
                 logging.info('creating normalized labels %s' % (self.subjcorrlabel))
-                thisprocstr = str("applywarp --ref=" + self.sst1 + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz'))
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("applywarp --ref=" + self.sst1 + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz')))
                 self.corrlabel=self.subjcorrlabel                       
                 
                 #skull strip normalized template for visualization purposes
@@ -1245,9 +1190,7 @@ class RestPipe:
                         t1strip.run()
                     elif options.skullstrip == 'bet':
                         logging.info('Skull stripping normalized template using BET.')
-                        thisprocstr = str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval))
-                        logging.info('running: ' + thisprocstr)
-                        subprocess.Popen(thisprocstr,shell=True).wait()
+                        runproc(str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval)))
   
                 else:
                     logging.info('t1 normalization failed.')
@@ -1310,9 +1253,7 @@ class RestPipe:
                             t1maskbinary.run()   
                         elif options.skullstrip == 'bet':
                             logging.info('Skull stripping T1 using BET for FLIRT.')
-                            thisprocstr = str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m")
-                            logging.info('running: ' + thisprocstr)
-                            subprocess.Popen(thisprocstr,shell=True).wait()
+                            runproc(str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m"))
                             self.maskbinaryfile=newfile + "_mask"
                     else:
                         self.sst1=self.t1nii 
@@ -1320,34 +1261,24 @@ class RestPipe:
                     #use t1 to generate flirt paramters
                     #first flirt the t1 to func
                     logging.info('flirt T1 to BOLD')
-                    thisprocstr = str("flirt -ref " + self.thisnii + " -in " + self.sst1 + " -out " + self.t1coregistered + " -omat " + self.t1coregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("flirt -ref " + self.thisnii + " -in " + self.sst1 + " -out " + self.t1coregistered + " -omat " + self.t1coregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
                
                     #flirt the standard to t1
                     logging.info('flirt standard to t1')
-                    thisprocstr = str("flirt -ref " + self.sst1 + " -in " + self.sstemplate + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear")
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("flirt -ref " + self.sst1 + " -in " + self.sstemplate + " -out " + os.path.join(self.regoutpath,'standard2t1_aff') + " -omat " + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " -cost corratio -dof 12 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
         
                     #fnirt the standard to t1
                     logging.info('fnirt standard to t1')
                     self.maskbinaryfilepath = self.maskbinaryfile + '.nii.gz'
-                    thisprocstr = str("fnirt --ref=" + self.unsst1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.template + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templateont1 + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef'))
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("fnirt --ref=" + self.unsst1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.template + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templateont1 + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef')))
                 
                     #apply the transform
                     logging.info('creating normalized template %s' % (self.templatenormalized))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.sstemplate + " --out=" + self.templatenormalized + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat')
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("applywarp --ref=" + self.thisnii + " --in=" + self.sstemplate + " --out=" + self.templatenormalized + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat'))
                     
                     #apply the transform
                     logging.info('creating normalized labels %s' % (self.subjcorrlabel))
-                    thisprocstr = str("applywarp --ref=" + self.thisnii + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat')
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("applywarp --ref=" + self.thisnii + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat'))
                     self.corrlabel=self.subjcorrlabel
                     
                     #skull strip normalized template for visualization purposes
@@ -1363,12 +1294,8 @@ class RestPipe:
                             t1strip.run()
                         elif options.skullstrip == 'bet':
                             logging.info('Skull stripping coregistered + normalized template using BET.')
-                            thisprocstr = str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval))
-                            logging.info('running: ' + thisprocstr)
-                            subprocess.Popen(thisprocstr,shell=True).wait()
-                            thisprocstr = str("bet " + self.templateont1 + " " + self.templateont1brain + " -f " + str(self.anatfval))
-                            logging.info('running: ' + thisprocstr)
-                            subprocess.Popen(thisprocstr,shell=True).wait()
+                            runproc(str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval)))
+                            runproc(str("bet " + self.templateont1 + " " + self.templateont1brain + " -f " + str(self.anatfval)))
           
                     else:
                         logging.info('t1 normalization failed.')
@@ -1405,16 +1332,12 @@ class RestPipe:
                 
                 else:
                     #use the functional to get the matrix
-                    thisprocstr = str("flirt -in " +  self.sstemplate + " -ref " + self.thisnii + " -out " + self.templatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear")
-                    logging.info('running: ' + thisprocstr)
-                    subprocess.Popen(thisprocstr,shell=True).wait()
+                    runproc(str("flirt -in " +  self.sstemplate + " -ref " + self.thisnii + " -out " + self.templatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
     
                     if os.path.isfile( self.templatenormalized + '.mat' ):
                         #then apply to labels
                         logging.info('applying transformation matrix label file')
-                        thisprocstr = str("flirt -in " + self.corrlabel+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized+ '.mat') + " -out " + self.subjcorrlabel)
-                        logging.info('running: ' + thisprocstr)
-                        subprocess.Popen(thisprocstr,shell=True).wait()
+                        runproc(str("flirt -in " + self.corrlabel+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized+ '.mat') + " -out " + self.subjcorrlabel))
                         self.corrlabel=self.subjcorrlabel
                         
                     else:
@@ -1470,14 +1393,10 @@ class RestPipe:
                 self.sst1 = self.t1nii #grab the input
             if self.sst1 is not None:
                 logging.info('Running segmentation on T1 image in analysis space.')
-                thisprocstr = str("fast -t 1 -n 3 -o " + newfile + " " + self.sst1)
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()           
+                runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sst1))          
             else:
                 logging.info('Running segmentation on template image in analysis space.')
-                thisprocstr = str("fast -t 1 -n 3 -o " + newfile + " " + self.sstemplate)
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sstemplate))
             self.csfmask = newfile + '_pve_0.nii.gz'
             self.gmmask = newfile + '_pve_1.nii.gz'
             self.wmmask = newfile + '_pve_2.nii.gz'           
@@ -1494,9 +1413,7 @@ class RestPipe:
             logging.info('Extracting WM signal for regression.')      
             #mean time series for wm
             wmout = os.path.join(self.outpath,"wm_ts.txt")
-            thisprocstr = str("fslmeants -i " + self.thisnii + " -m " + self.wmmask + " -o " + wmout )
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("fslmeants -i " + self.thisnii + " -m " + self.wmmask + " -o " + wmout))
             if not os.path.isfile(wmout):
                     logging.info('Could not extract WM timeseries, quitting: ' + wmout)
                     raise SystemExit()
@@ -1506,9 +1423,7 @@ class RestPipe:
             logging.info('Extracting WM signal for regression.')      
             #mean time series for csf
             csfout = os.path.join(self.outpath,"csf_ts.txt")
-            thisprocstr = str("fslmeants -i " + self.thisnii + " -m " + self.csfmask + " -o " + csfout )
-            logging.info('running: ' + thisprocstr)
-            subprocess.Popen(thisprocstr,shell=True).wait()
+            runproc(str("fslmeants -i " + self.thisnii + " -m " + self.csfmask + " -o " + csfout))
             if not os.path.isfile(csfout):
                     logging.info('Could not extract CSF timeseries, quitting: ' + csfout)
                     raise SystemExit()
@@ -1533,16 +1448,12 @@ class RestPipe:
         np.savetxt(self.regressparams, regressors_ts)
         
         #convert regressor params to .mat file
-        thisprocstr = str("Text2Vest " + self.regressparams + " " + self.regressparamsmat)
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        runproc(str("Text2Vest " + self.regressparams + " " + self.regressparamsmat))
 
         #regress out data
         newprefix = self.prefix + 'r'
         newfile = os.path.join(self.outpath, (newprefix + ".nii.gz"))
-        thisprocstr = str("fsl_glm -i " + self.thisnii + " -d " + self.regressparamsmat + " --out_res=" + newfile)
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        runproc(str("fsl_glm -i " + self.thisnii + " -d " + self.regressparamsmat + " --out_res=" + newfile))
 
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
@@ -1613,9 +1524,7 @@ class RestPipe:
         kernel_sigma = kernel_width/2.3548 
        
         #apply smoothing
-        thisprocstr = str("fslmaths " +  self.thisnii + " -kernel gauss " + str(kernel_sigma) + " -fmean " + newfile)
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        runproc(str("fslmaths " +  self.thisnii + " -kernel gauss " + str(kernel_sigma) + " -fmean " + newfile))
      
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
@@ -1638,9 +1547,7 @@ class RestPipe:
         logging.info('starting parcellation')
         corrtxt = os.path.join(self.outpath,'corrlabel_ts.txt')
 
-        thisprocstr = str("fslmeants -i " + self.thisnii + " --label=" + self.corrlabel + " -o " + corrtxt )
-        logging.info('running: ' + thisprocstr)
-        subprocess.Popen(thisprocstr,shell=True).wait()
+        runproc(str("fslmeants -i " + self.thisnii + " --label=" + self.corrlabel + " -o " + corrtxt ))
         if not os.path.isfile(corrtxt):
             logging.info('could not create mean timeseries matrix file')
             raise SystemExit()
@@ -1754,14 +1661,10 @@ class RestPipe:
             self.masks = os.path.join(self.outpath,'masks')
             if self.t1nii is not None:
                 logging.info('Running segmentation on T1 image in analysis space.')
-                thisprocstr = str("fast -t 1 -n 3 -o " + self.masks + " " + self.t1nii)
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()           
+                runproc(str("fast -t 1 -n 3 -o " + self.masks + " " + self.t1nii))         
             else:
                 logging.info('Running segmentation on template image in analysis space.')
-                thisprocstr = str("fast -t 1 -n 3 -o " + self.masks + " " + self.sstemplate)
-                logging.info('running: ' + thisprocstr)
-                subprocess.Popen(thisprocstr,shell=True).wait()
+                runproc(str("fast -t 1 -n 3 -o " + self.masks + " " + self.sstemplate))
             self.csfmask = self.masks + '_pve_0.nii.gz'
             self.gmmask = self.masks + '_pve_1.nii.gz'
             self.wmmask = self.masks + '_pve_2.nii.gz'
@@ -2096,3 +1999,4 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
+
