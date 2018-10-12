@@ -2098,4 +2098,3 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
-    
