@@ -50,19 +50,20 @@ Program to run through Nan-kuei Chen's resting state analysis pipeline:
     1 - Throwaway of initial volumes, then slice time correction
     2 - Motion correction, then regress out motion parameter
     3 - Skull stripping
-    4 - Normalize data
-    5 - Regress out WM/CSF
-    6 - Detrending
-    7 - Lowpass filter
-    8 - FWHM smoothing
-    9 - Do parcellation and produce correlation matrix from label file
+    4 - Normalization
+    5 - Tissue segmentation
+    6 - Nuissance regression
+    7 - Detrending
+    8 - Bandpass filtering
+    9 - FWHM smoothing
+    10 - Parcellation and produce correlation matrix from label file
       * or split it up:
-         9a - Parcellation from label file
-         9b - Produce correlation matrix [--func option is ignored if step 7b
+         10a - Parcellation from label file
+         10b - Produce correlation matrix [--func option is ignored if step 10b
               is run by itself unless --dvarsthreshold is specified, and
               --corrts overrides default location for input parcellation
               results (outputpath/corrlabel_ts.txt)]
-    10 - Functional connectivity density mapping
+    11 - Functional connectivity density mapping
 """
 
 parser = ArgumentParser(description=description)
@@ -77,22 +78,26 @@ parser.add_argument("--tr",  action="store", type=float, dest="tr_ms",help="TR o
 parser.add_argument("--ssref",  action="store", type=afile, dest="sstemplate",help="Pointer to skullstripped template reference image if not using standard brain.", metavar="FILE")
 parser.add_argument("--ref",  action="store", type=afile, dest="template",help="Pointer to skullon template reference image if not using standard brain.", metavar="FILE")
 parser.add_argument("--gmmask",  action="store", type=afile, dest="gmmask",help="Pointer to GM mask of reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--wmmask",  action="store", type=afile, dest="csfmask",help="Pointer to WM mask of reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--csfmask",  action="store", type=afile, dest="wmmask",help="Pointer to CSF mask of reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--segmenttransform",  action="store", type=afile, dest="segmenttransform",help="Pointer to a transformation file from T1 to BOLD or Template for the segmentation step.", metavar="FILE")
 parser.add_argument("--refbrainmask",  action="store", type=afile, dest="refbrainmask",help="Pointer to brain mask of reference image if not using standard brain.", metavar="FILE")
 parser.add_argument("--fnirtbrainmask",  action="store", type=afile, dest="fnirtbrainmask",help="Pointer to a brain mask of reference image if not using standard brain for fnirt.", metavar="FILE")
 parser.add_argument("--fnirtconfig",  action="store", type=afile, dest="fnirtconfig",help="Pointer to a configuration file for fnirt.", metavar="FILE")
 parser.add_argument("--mcparams",  action="store", type=afile, dest="mcparams",help="Pointer to motion parameters file in .par file type.", metavar="FILE.par")
 parser.add_argument("--fwhm",  action="store", type=int, dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
 parser.add_argument("--refacpoint",  action="store", type=str, dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
-parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data Default is 'bet'.", metavar="bet/afni", default='bet')
+parser.add_argument("--flirtcost",  action="store", type=str, choices=['mutualinfo', 'corrratio', 'normmi', 'bbr'], dest="flirtcost",help="Cost function for flirt registration of BOLD images. Default is 'bbr'.", metavar="cost function", default='bbr')
+parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data. Default is 'bet'.", metavar="bet/afni", default='bet')
 parser.add_argument("--fval",  action="store", type=float, choices=range(0,1), dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
 parser.add_argument("--anatfval",  action="store", type=float, choices=range(0,1), dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
 parser.add_argument("--regmethod",  action="store",type=str, choices=['ants', 'fsl'], dest="regmethod",help="Register and normalize images using 'ants' or 'fsl'. Default is 'fsl'.", metavar="ants/fsl", default='fsl')
 parser.add_argument("--detrend",  action="store", type=int, choices=range(0,4), dest="detrend",help="Polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2", default='2')
 parser.add_argument("--lpfreq",  action="store", type=float, dest="lpfreq",help="Frequency cutoff for lowpass filtering in HZ.  default is .08 Hz", metavar="0.08", default='0.08')
 parser.add_argument("--hpfreq",  action="store", type=float, dest="hpfreq",help="Frequency cutoff for highpass filtering in HZ.  default is .01 Hz", metavar="0.01", default='0.01')
-parser.add_argument("--corrlabel",  action="store", type=afile, dest="corrlabel",help="Pointer to 3D label containing ROIs for the correlation search. Fefault is the 116 region AAL label file.", metavar="FILE")
+parser.add_argument("--corrlabel",  action="store", type=afile, dest="corrlabel",help="Pointer to 3D label containing ROIs for the correlation search. Default is the 116 region AAL label file.", metavar="FILE")
 parser.add_argument("--corrtext",  action="store", type=afile, dest="corrtext",help="Pointer to text file containing names/indices for ROIs for the correlation search. Default is the 116 region AAL label txt file.", metavar="FILE")
-parser.add_argument("--corrts",  action="store", type=str, dest="corrts",help="If using step 9b by itself, this is the path to parcellation output (default is to use OUTPATH/corrlabel_ts.txt), which will be used as input to the correlation.", metavar="FILE")
+parser.add_argument("--corrts",  action="store", type=str, dest="corrts",help="If using step 10b by itself, this is the path to parcellation output (default is to use OUTPATH/corrlabel_ts.txt), which will be used as input to the correlation.", metavar="FILE")
 parser.add_argument("--dvarsthreshold",  action="store", type=str, dest="dvarsthreshold",help="If specified, this reprsents a DVARS threshold either in BOLD units, or if ending in a '%' character, as a percentage of mean global signal intensity (over the brain mask).  Any volume contributing to a DVARS value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  DVARS calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
 parser.add_argument("--dvarsnumneighbors",  action="store", type=int, dest="dvarsnumneighbors",help="If --dvarsthreshold is specified, then --dvarsnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 0.", metavar="NUMNEIGHBORS")
 parser.add_argument("--fdthreshold",  action="store", type=float, dest="fdthreshold",help="If specified, this reprsents a FD threshold in mm.  Any volume contributing to a FD value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  FD calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
@@ -103,20 +108,19 @@ parser.add_argument("--motionpar",  action="store", type=str, dest="motionpar",h
 parser.add_argument("--scrubop",  action="store", type=str, choices=['and', 'or'], dest="scrubop", help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubop specifies the aggregation operator used to determine the final list of excluded volumes.  Default is 'or', which means a volume will be excluded if *any* of its thresholds are exceeded, whereas 'and' means all the thresholds must be exceeded to be excluded.")
 parser.add_argument("--powerscrub", action="store_true", dest="powerscrub", help="Equivalent to specifying --fdthreshold=0.5 --fdnumneighbors=0 --dvarsthreshold=0.5% --dvarsnumneigbhors=0 --scrubop='and', to mimic the method used in the Power et al. article.  Any conflicting options specified before or after this will override these.", default=False)
 parser.add_argument("--scrubkeepminvols",  action="store", type=int, dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
-parser.add_argument("--fcdmthresh",  action="store", type=float, dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
+parser.add_argument("--fcdmthresh",  action="store", type=float, dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step11 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
 parser.add_argument("--space",  action="store",type=str, choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="choice of space", default='Template')
 parser.add_argument("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
-parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion'], nargs='*', help="List regressors to use in step 5 separated by space. Default is motion, wm amd csf", metavar="REGRESSORS", default=['motion', 'wm', 'csf'])
+parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion'], nargs='*', help="List nuissance regressors separated by space. Default is motion, wm amd csf", metavar="REGRESSORS", default=['motion', 'wm', 'csf'])
 
 options = parser.parse_args()
 
 if '-h' in sys.argv:
-
     parser.print_help()
-
     raise SystemExit()
-if not (options.funcfile) or '-help' in sys.argv:
-    print("Input file ( --func ) is required to begin. Try --help ")
+    
+if '-help' in sys.argv:
+    print("Try --help")
     raise SystemExit()
 
 class RestPipe:
@@ -140,16 +144,18 @@ class RestPipe:
                 self.step6()
             elif i == '7':
                 self.step7()
-            elif i == '8a':
-                self.step8a()
-            elif i == '8b':
-                self.step8b()
             elif i == '8':
                 self.step8()
             elif i == '9':
                 self.step9()
             elif i == '10':
                 self.step10()
+            elif i == '10a':
+                self.step10a()
+            elif i == '10b':
+                self.step10b()
+            elif i == '11':
+                self.step11()
 
         if options.cleanup is not None:
             self.cleanup()
@@ -158,7 +164,7 @@ class RestPipe:
     def initialize(self):
          #if all was defined, set those steps
         if (options.steps == 'all'):
-            self.steps = ['0','1','2','3','4','5','6','7','8','9','10']
+            self.steps = ['0','1','2','3','4','5','6','7','8','9','10','11']
         else:
             #convert unicode str, push into obj
             self.steps = options.steps.split(',')
@@ -166,37 +172,29 @@ class RestPipe:
                 self.steps[i] = str(self.steps[i])
 
         self.needfunc = True
-        if len(self.steps) == 1 and '8b' in self.steps:
+        if len(self.steps) == 1 and '10b' in self.steps:
             self.needfunc = False
 
         #check bxh if provided
         self.origbxh = None
         self.thisnii = None
         if options.funcfile is not None and self.needfunc:
-            if not ( os.path.isfile(options.funcfile)):
-                print("File does not exist: " + options.funcfile)
-                raise SystemExit()
-            else:
-                self.origbxh = str(options.funcfile)
+            self.origbxh = str(options.funcfile)
 
         #t1
         self.t1bxh = None
         self.t1nii = None
         if options.anatfile is not None:
-            if not ( os.path.isfile(options.anatfile)):
-                print("File does not exist: " + options.anatfile)
-                raise SystemExit()
-            else:
-                fileExt = os.path.splitext(options.anatfile)[-1]
-                if fileExt == '.bxh':
-                    self.t1bxh = str(options.anatfile)
-                elif fileExt == '.gz' or fileExt == '.nii':
-                    self.t1nii = str(options.anatfile)
-                    runproc(str("fslwrapbxh " + self.t1nii))
-                    if os.path.isfile(self.t1nii.split('.')[0] + '.nii.gz'):
-                        self.t1bxh = self.t1nii.split('.')[0] + '.nii.gz'
-                    elif os.path.isfile(self.t1nii.split('.')[0] + '.nii'):
-                        self.t1bxh = self.t1nii.split('.')[0] + '.nii'
+            fileExt = os.path.splitext(options.anatfile)[-1]
+            if fileExt == '.bxh':
+                self.t1bxh = str(options.anatfile)
+            elif fileExt == '.gz' or fileExt == '.nii':
+                self.t1nii = str(options.anatfile)
+                runproc(str("fslwrapbxh " + self.t1nii))
+                if os.path.isfile(self.t1nii.split('.')[0] + '.nii.gz'):
+                    self.t1bxh = self.t1nii.split('.')[0] + '.nii.gz'
+                elif os.path.isfile(self.t1nii.split('.')[0] + '.nii'):
+                    self.t1bxh = self.t1nii.split('.')[0] + '.nii'
     
 
         if options.prefix is not None:
@@ -224,16 +222,19 @@ class RestPipe:
 
         #grab detrend setting
         self.detrend = options.detrend
-        if self.detrend > 3 or self.detrend < 0:
-            print("Invalid detrending polynomal: " + self.detrend)
-            raise SystemExit()
             
         #regressors
         self.regressors = options.regressors
         
-        #grab gm mask
+        #grab masks
         self.gmmask = options.gmmask
+        self.wmmask = options.wmmask
+        self.csfmask = options.csfmask
         
+        #grab flirt cost for bold to mni registrations
+        self.flirtcost = options.flirtcost
+        #grab regmethod
+        self.regmethod = options.regmethod
         #reference image for normalization
         self.refac = str(options.refac)
         logging.info('Using ' + options.refac + ' for AC point/centroid calculation')
@@ -248,18 +249,13 @@ class RestPipe:
             self.template = os.path.join(self.basedir,'data','MNI152_T1_2mm.nii.gz')
             
         if options.sstemplate is not None:
-            if not (os.path.isfile(options.sstemplate)):
-                 print("File does not exist: " + options.sstemplate)
+            if self.regmethod == 'fsl' and self.t1nii is not None and options.template is None:
+                 print("If using not using default template, a skull-on image is required for FNIRT.")
                  raise SystemExit()
-            if options.regmethod == 'fsl' and self.t1nii is not None and options.template is None:
-                 print("If using nonstandard reference, a skull-on image is required for FNIRT.")
-                 raise SystemExit()
-            if options.regmethod == 'fsl' and self.t1nii is not None and options.fnirtbrainmask is None and options.space == 'Template':
-                 print("If using nonstandard reference, a brain mask is required for FNIRT when obtaining derivatives in Template space.")
-                 raise SystemExit()
-                 
+            if self.regmethod == 'fsl' and self.t1nii is not None and options.fnirtbrainmask is None and options.space == 'Template':
+                 print("If using not using default template, a brain mask is required for FNIRT when obtaining derivatives in Template space.")
+                 raise SystemExit()     
             self.sstemplate = str(options.sstemplate)
- 
         else:
             self.sstemplate = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain.nii.gz')
              
@@ -298,70 +294,47 @@ class RestPipe:
         
         #check original space calculations
         self.space=options.space
-        if self.space == 'T1' or self.space == 'BOLD':
-            if '4' not in self.steps:
-                if options.corrlabel is None or options.corrtext is None:
-                    print("You requested derivatives in BOLD or T1 subject space, but are not running normalization and did not provide a ROI label files in the subject space. Please run step 4 or provide --corrlabel and --corrtext." )
-                    raise SystemExit()
-                if '5' in self.steps and options.sstemplate is None and self.t1nii is None:
-                    print("You requested derivatives in BOLD or T1 subject space, but are not running normalization and did not provide a template files in the subject space. Please run step 4 or provide --ssref or a T1 image in the analysis space." )
-                    raise SystemExit()
-            else:
-                if self.t1nii is None and self.space == 'T1':
-                    print("You requested derivatives in T1 subject space, but did not provide a T1 file" )
-                    raise SystemExit()
 
         #grab correlation label, or assign the AAL brain
         if options.corrlabel is not None:
-            if not ( os.path.isfile(options.corrlabel) ):
-                print("File does not exist: " + options.corrlabel)
-                raise SystemExit()
-            elif not ( os.path.isfile(options.corrtext) ):
-                print("File does not exist: " + options.corrtext)
-                raise SystemExit()            
-            else:
-                self.corrlabel = str(options.corrlabel)
+            self.corrlabel = str(options.corrlabel)
+            if options.corrtext is not None:
                 self.corrtext  = str(options.corrtext)
+            else:
+                logging.info("Please provide --corrtext option when the default template is not being used.")
+                raise SystemExit()
         else:
             self.corrlabel = os.path.join(self.basedir,'data','aal_MNI_V4.nii')
             self.corrtext = os.path.join(self.basedir,'data','aal_MNI_V4.txt')
         
         #grab motion parameters if needed
         self.mcparams = options.mcparams
-        if '2' not in self.steps and self.mcparams is None and 'motion' in self.regressors and '5' in self.steps:
-            print("You have chosen not to perform motion correction, but to regress motion. You must provide the motion parameters to regress with --mcparams.")
-            raise SystemExit()
-        
         
         #grab band-pass filter input
         self.lpfreq = options.lpfreq
         self.hpfreq = options.hpfreq
 
-        #f value to use in bet for skull stripping
+        #grab skull stripping options
         if options.fval is not None:
             self.fval = options.fval
-            if self.fval > 1 or self.fval < 0 :
-                print("Invalid functional skull stripping threshold: " + self.fval)
-                raise SystemExit()
         else:
             if options.skullstrip == 'afni':
                 self.fval = 0.5
             elif options.skullstrip == 'bet':
                 self.fval = 0.4
         
-        
         if options.anatfval is not None:
-            self.anatfval = options.anatfval
-            if self.anatfval > 1 or self.anatfval < 0:
-                print("Invalid anatomical skull stripping threshold: " + self.anatfval)
-                raise SystemExit()
+            self.anatfval = options.anatfval        
         else:
             if options.skullstrip == 'afni':
                 self.anatfval = 0.6
-                self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
             elif options.skullstrip == 'bet':
-                self.anatfval = 0.5         
+                self.anatfval = 0.5     
+        self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
 
+
+        #grab remaining options
+        self.segmenttransform = options.segmenttransform
         self.sliceorder = options.sliceorder
         self.throwaway = options.throwaway
         self.scrubop = 'or'
@@ -411,8 +384,8 @@ class RestPipe:
                     raise SystemExit()
                 self.mcparams = options.motionpar
         if options.fcdmthresh is not None:
-            self.fcdmthresh = float(options.fcdmthresh)
-
+            self.fcdmthresh = float(options.fcdmthresh)        
+        
         #array for files to delete later
         self.toclean = []
         self.slicefile = None
@@ -423,31 +396,6 @@ class RestPipe:
         self.tdim = None
         #self.thisnii = None
         self.prevprefix = None
-
-        #last preflight check for all potentially required files
-        #if these aren't defined by options they get default values
-        for fname in [self.sstemplate, self.corrlabel]:
-            if not os.path.isfile(fname):
-                print("File does not exist: " + fname)
-                raise SystemExit()
-
-        
-            if (self.thisnii is not None) and ( self.tr_ms is not None ):
-                thishdr = nibabel.load(self.thisnii).get_header()
-                thisshape = thishdr.get_data_shape()
-
-                if len(thisshape) == 4:
-                    self.xdim = thisshape[0]
-                    self.ydim = thisshape[1]
-                    self.zdim = thisshape[2]
-                    self.tdim = thisshape[3]
-                else:
-                    logging.info("Functional data has incorrect dimensions. Expected 4D, received : " + str(len(thisshape)) + " D")
-                    raise SystemExit()
-            elif ( [ step for step in ['0', '1', '5', '6', '7'] if step in self.steps ] ):
-                logging.info("Please provide --tr option when starting from nifti, we don't trust TR derrived from existing nifti files.")
-                raise SystemExit()
-
 
         #make output directory
         if (options.outpath == 'PWD'):
@@ -486,7 +434,23 @@ class RestPipe:
 
                 if os.path.isfile(newfile + ".bxh"):
                     self.t1bxh = newfile + ".bxh"
+        #Check tr and BOLD dimension      
+        if (self.thisnii is not None) and ( self.tr_ms is not None ):
+            thishdr = nibabel.load(self.thisnii).get_header()
+            thisshape = thishdr.get_data_shape()
 
+            if len(thisshape) == 4:
+                self.xdim = thisshape[0]
+                self.ydim = thisshape[1]
+                self.zdim = thisshape[2]
+                self.tdim = thisshape[3]
+            else:
+                logging.info("Functional data has incorrect dimensions. Expected 4D, received : " + str(len(thisshape)) + " D")
+                raise SystemExit()
+        elif ( [ step for step in ['0', '1', '6', '7', '8'] if step in self.steps ] ):
+            logging.info("Please provide --tr option when starting from nifti, we don't trust TR derrived from existing nifti files.")
+            raise SystemExit()
+            
         #try to determine sliceorder if step1
         if '1' in self.steps:
             if re.search('\d+\,+',str(self.sliceorder)):
@@ -553,20 +517,63 @@ class RestPipe:
             else:
                 logging.info("slice order not found. please use --sliceorder option")
                 raise SystemExit()
-                
+                   
+            
+        #PRE FLIGHT CHECK    
         #make sure motion regression is possible     
-        if 'motion' in self.regressors and '2' not in self.steps and options.mcparams is None:
-            logging.info("Performing motion regression, but motion regressors not found and not being calculated. Please provide motion regressors, run step 2, or skip motion regression.")
+        if 'motion' in self.regressors and '2' not in self.steps and options.mcparams is None and '6' in self.steps:
+            logging.info("Motion regression requested, but motion regressors not found and not being calculated. Please provide motion regressors, run step 2, or skip motion regression.")
             raise SystemExit()
-            
-            
-        #Non kill settings Warmings
-        if '3' not in self.steps and '4' in self.steps and self.t1nii is not None and options.regmethod == 'fsl':
-            print('INFO: FNIRT requires T1 with skull. Please make sure T1 has skull and BOLD does not.') 
-            
-        # If running step 9b by itself, check corrts now
+        
+        #check space calculations
+        if self.space == 'T1' or self.space == 'BOLD':
+            if '4' not in self.steps:
+                if options.corrlabel is None or options.corrtext is None:
+                    logging.info("You requested derivatives in BOLD or T1 subject space, but are not running normalization and did not provide a ROI label files in the subject space. Please run step 4 or provide --corrlabel and --corrtext." )
+                    raise SystemExit()
+                if '5' in self.steps and options.sstemplate is None and self.t1nii is None:
+                    logging.info("You requested derivatives in BOLD or T1 subject space, but are not running normalization and did not provide a template files in the subject space. Please run step 4 or provide --ssref or a T1 image in the analysis space." )
+                    raise SystemExit()
+            else:
+                if self.t1nii is None and self.space == 'T1':
+                    logging.info("You requested derivatives in T1 subject space, but did not provide a T1 file" )
+                    raise SystemExit()
+      
+        #check masks
+        if self.gmmask is None and '5' not in self.steps and '11' in self.steps:
+            logging.info('Please provide a gray matter mask or run segmentation.')
+            raise SystemExit()
+        if ((self.wmmask or self.csfmask) is None) and ('5' not in self. steps) and (('wm' or 'csf') in self.regressors):
+            logging.info('Please run segmentation or provide WM and CSF masks in the ANALYSIS SPACE for regression.')
+            raise SystemExit()        
+        if ((self.wmmask or self.csfmask or self.gmmask) is not None) and ('5' in self. steps):
+            logging.info('The tissue masks provided will not be used, as segmentation is being performed.')    
+        if '3' not in self.steps and '4' in self.steps and self.t1nii is not None and self.regmethod == 'fsl':
+            logging.info(' FNIRT requires T1 with skull. Please make sure T1 has skull and BOLD does not.') 
+        
+        #check segment transform is available
+        if '5' in self.steps and '4' not in self.steps and self.segmenttransform is None:
+            if self.space == 'BOLD' or (self.space == 'Template' and self. t1nii is not None):
+                logging.info('Please provide a transformation file or run registration.')
+                raise SystemExit()               
+        if self.segmenttransform is not None and '4' in self.steps:
+            logging.info('Registration will overrule the transformation that was provided for segmentation.') 
+        
+        #check segment transform file type
+        if self.segmenttransform is not None and (self.segmenttransform.endswith('.mat') or self.segmenttransform.endswith('.nii') or self.segmenttransform.endswith('.nii.gz')):
+            if self.regmethod == 'ants' and self.segmenttransform.endswith('.mat'):
+                logging.info('Wrong file type %s', self.segmenttransform)
+                raise SystemExit()
+            if self.regmethod == 'fsl' and (self.segmenttransform.endswith('.nii') or self.segmenttransform.endswith('.nii.gz')):
+                logging.info('Wrong file type %s', self.segmenttransform)
+                raise SystemExit()
+        elif self.segmenttransform is not None:
+            logging.info('Wrong file type %s', self.segmenttransform)
+            raise SystemExit()
+        
+        # If running step 10b by itself, check corrts now
         self.corrts = None
-        if len(self.steps) == 1 and '9b' in self.steps:
+        if len(self.steps) == 1 and '10b' in self.steps:
             # running step 9b by itself.  See if --corrts is specified or
             # otherwise look for default parcellation output file
             if options.corrts is not None:
@@ -577,10 +584,10 @@ class RestPipe:
             else:
                 corrtsfile = os.path.join(self.outpath,'corrlabel_ts.txt')
                 if not os.path.isfile(corrtsfile):
-                    print("You are running step 9b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,))
+                    print("You are running step 10b by itself, but can't find default input file '%s'.  Please specify an alternate file with --corrts." % (corrtsfile,))
                     raise SystemExit()
         
-    #get the labels from the text file
+    #function to get the labels from the text file
     def grab_labels(self):
         mylabs = open(self.corrtext,'r').readlines()
         labs = []
@@ -702,9 +709,9 @@ class RestPipe:
                             
             #pictures to check bold skull strip
             self.meanbold = mean_img(self.thisnii)
-            self.meanbetbold = mean_img(str(newfile+'.nii.gz'))
+            self.meanfuncbrain = mean_img(str(newfile+'.nii.gz'))
             display = plotting.plot_img((self.meanbold), cmap=plt.cm.Greens, cut_coords=(0,0,0))
-            display.add_overlay((self.meanbetbold), cmap=plt.cm.Reds, alpha=0.6)
+            display.add_overlay((self.meanfuncbrain), cmap=plt.cm.Reds, alpha=0.6)
             display.savefig(os.path.join(self.regoutpath, 'SS_BOLD.png'))
             
         elif options.skullstrip == 'bet':
@@ -780,8 +787,9 @@ class RestPipe:
         newfile = os.path.join(self.outpath, newprefix)           
         out_file = newfile + '.nii.gz'
 	#ANTs
-        if options.regmethod == 'ants':          
+        if self.regmethod == 'ants':          
             import ants
+            self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
             if os.path.isfile(self.meanfuncbrain) == False:
                     #first create mean_func
                     logging.info('Mean fuctional not found, creating mean funcional.')
@@ -807,8 +815,8 @@ class RestPipe:
                     #apply the transform
                     logging.info('Coregistering func')
                     moving=ants.image_read(self.thisnii) #orig func
-                    transformmat = tx_func2t1['fwdtransforms']
-                    coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
+                    func2t1 = tx_func2t1['fwdtransforms']
+                    coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=func2t1[0])
                     ants.image_write(coregistered, self.boldcoregistered)
                 
                     #SyN the t1 to standard
@@ -829,6 +837,9 @@ class RestPipe:
                     moving=ants.resample_image(moving,vector,True,0)
                     normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
                     ants.image_write(normalized, out_file)
+                    
+                    #save transform for segmentation
+                    self.segmenttransform=t12standard[0]
                     
                     #Images to check normalization
                     #bold on t1
@@ -881,8 +892,8 @@ class RestPipe:
                 #apply the transform
                 logging.info('Coregistering func')
                 moving=ants.image_read(self.thisnii) #orig func
-                transformmat = tx_func2t1['fwdtransforms']
-                coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=transformmat[0])
+                func2t1 = tx_func2t1['fwdtransforms']
+                coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=func2t1[0])
                 ants.image_write(coregistered, self.boldcoregistered)
                 
                 #SyN the t1 to standard
@@ -952,7 +963,7 @@ class RestPipe:
                     moving = ants.image_read(self.t1nii)
                     fixed=ants.resample_image(fixed,moving.shape,True,0)
                     tx_t12func = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine')
-                    transformmat = tx_t12func['fwdtransforms']
+                    t12func = tx_t12func['fwdtransforms']
                     coregistered = tx_t12func['warpedmovout']
                     ants.image_write(coregistered, self.t1coregistered)
                     
@@ -960,7 +971,7 @@ class RestPipe:
                     logging.info('Normalizing template from T1 to BOLD')
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.resample_image(template_t1img, fixed.shape, True, 0)
-                    templatenormalizedimg = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
+                    templatenormalizedimg = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=t12func[0])
                     ants.image_write(templatenormalizedimg, self.templatenormalized)
         
                     #Apply the transforms to label file
@@ -971,9 +982,12 @@ class RestPipe:
                     normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=standard2t1[0])
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.resample_image(normalized, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=t12func[0])
                     ants.image_write(normalized, self.subjcorrlabel)
                     self.corrlabel=self.subjcorrlabel
+                    
+                    #save transform for segmentation
+                    self.segmenttransform=t12func[0]
                     
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
@@ -1002,15 +1016,18 @@ class RestPipe:
                     moving=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
                     tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff')
-                    transformmat = tx_template2func['fwdtransforms']
+                    template2func = tx_template2func['fwdtransforms']
                     
                     #normalize label file
                     logging.info('Normalizing label file')
                     moving=ants.image_read(self.corrlabel) #label file in template space 
                     moving=ants.resample_image(moving, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=transformmat[0])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=template2func[0])
                     ants.image_write(normalized, self.subjcorrlabel)
                     self.corrlabel=self.subjcorrlabel
+
+                    #save transform for segmentation
+                    self.segmenttransform=template2func[0]
 
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
@@ -1025,7 +1042,7 @@ class RestPipe:
                     self.sstemplate = self.templatenormalized #for regressors
 
         #FSL
-        elif options.regmethod == 'fsl':
+        elif self.regmethod == 'fsl':
             if self.space == 'Template':
                 if self.t1nii is not None:
                     self.t1normalized=os.path.join(self.regoutpath,'t1normalized')
@@ -1056,7 +1073,7 @@ class RestPipe:
                     #use t1 to generate flirt paramters
                     #first flirt the func to the t1
                     logging.info('flirt func to t1')
-                    runproc(str("flirt -ref " + self.sst1 + " -in " + self.thisnii + " -out " + self.boldcoregistered + " -omat " + self.boldcoregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
+                    runproc(str("flirt -ref " + self.sst1 + " -in " + self.thisnii + " -out " + self.boldcoregistered + " -omat " + self.boldcoregistered + '.mat' + " -cost " + self.flirtcost + " -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
                     
                     #flirt the t1 to standard
                     logging.info('flirt t1 to standard')
@@ -1069,6 +1086,9 @@ class RestPipe:
                     #apply the transform
                     logging.info('creating normalized func %s' % (newprefix))
                     runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + self.thisnii + " --out=" + newfile + " --warp=" + os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz') + " --premat=" + self.boldcoregistered + '.mat'))
+                    
+                    #save transform for segmentation
+                    self.segmenttransform = os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz')
                     
                     #skull strip normalized t1 for visualization purposes
                     self.t1normalized=self.t1normalized+'.nii.gz'
@@ -1109,7 +1129,7 @@ class RestPipe:
                         
                 else:
                     #use the functional to get the matrix
-                    runproc(str("flirt -in " +  self.thisnii + " -ref " + self.sstemplate + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
+                    runproc(str("flirt -in " +  self.thisnii + " -ref " + self.sstemplate + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost " + self.flirtcost + " -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
     
                     if os.path.isfile( newfile + '.mat' ):
                         #then apply output matrix to the same data with the same output name. for some reason flirt doesn't output 4D data above
@@ -1155,7 +1175,7 @@ class RestPipe:
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
                 logging.info('flirt func to t1')
-                runproc(str("flirt -in " + self.thisnii + " -ref " + self.sst1 + " -out " + newfile + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
+                runproc(str("flirt -in " + self.thisnii + " -ref " + self.sst1 + " -out " + newfile + " -omat " + os.path.join(self.regoutpath,'boldcoregistered.mat') + " -cost " + self.flirtcost + " -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
                 
                 #apply to make it 4d
                 if os.path.isfile( os.path.join(self.regoutpath,'boldcoregistered.mat') ):
@@ -1260,8 +1280,14 @@ class RestPipe:
                 
                     #use t1 to generate flirt paramters
                     #first flirt the t1 to func
-                    logging.info('flirt T1 to BOLD')
-                    runproc(str("flirt -ref " + self.thisnii + " -in " + self.sst1 + " -out " + self.t1coregistered + " -omat " + self.t1coregistered + '.mat' + " -cost corratio -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
+                    if self.flirtcost == 'bbr':
+                        print("WARNING: BBR cost is selected, so tranform will be BOLD->T1 and the inverse will be applied to the Template.")
+                        runproc(str("flirt -in " +  self.thisnii + " -ref " + self.sst1 + " -out " +  self.t1coregistered + " -omat " + ( self.t1coregistered + '.mat') + " -bins 256 -cost " + self.flirtcost + " -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
+                        runproc(str("convert_xfm -omat " + self.templatenormalized + '.mat -inverse ' +  self.t1coregistered + '.mat'))
+                        runproc(str("flirt - ref " + self.thisnii + " -in " + self.sst1 + " -applyxfm -init " +   self.t1coregistered + '.mat -out ' +  self.t1coregistered))
+                    else:
+                        logging.info('flirt T1 to BOLD')
+                        runproc(str("flirt -ref " + self.thisnii + " -in " + self.sst1 + " -out " + self.t1coregistered + " -omat " + self.t1coregistered + '.mat' + " -cost  " + self.flirtcost + " -dof 6 -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -interp trilinear"))
                
                     #flirt the standard to t1
                     logging.info('flirt standard to t1')
@@ -1280,6 +1306,9 @@ class RestPipe:
                     logging.info('creating normalized labels %s' % (self.subjcorrlabel))
                     runproc(str("applywarp --ref=" + self.thisnii + " --in=" + self.corrlabel + " --out=" + self.subjcorrlabel + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat'))
                     self.corrlabel=self.subjcorrlabel
+                    
+                    #save transform for segmentation
+                    self.segmenttransform=self.t1coregistered + '.mat'
                     
                     #skull strip normalized template for visualization purposes
                     self.templatenormalized=self.templatenormalized + '.nii.gz'
@@ -1332,18 +1361,27 @@ class RestPipe:
                 
                 else:
                     #use the functional to get the matrix
-                    runproc(str("flirt -in " +  self.sstemplate + " -ref " + self.thisnii + " -out " + self.templatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost corratio -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
-    
+                    if self.flirtcost == 'bbr':
+                        print("WARNING: BBR cost is selected, so tranform will be BOLD->Template and the inverse will be applied to the Template.")
+                        runproc(str("flirt -in " +  self.thisnii + " -ref " + self.sstemplate + " -out " + self.templatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost " + self.flirtcost + " -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
+                        runproc(str("convert_xfm -omat " + self.templatenormalized + '.mat -inverse ' + self.templatenormalized + '.mat'))
+                        runproc(str("flirt - ref " + self.thisnii + " -in " + self.sstemplate + " -applyxfm -init " +  self.templatenormalized + '.mat -out ' + self.templatenormalized))
+                    else:
+                        runproc(str("flirt -in " +  self.sstemplate + " -ref " + self.thisnii + " -out " + self.templatenormalized + " -omat " + (self.templatenormalized + '.mat') + " -bins 256 -cost " + self.flirtcost + " -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
+                    
                     if os.path.isfile( self.templatenormalized + '.mat' ):
                         #then apply to labels
                         logging.info('applying transformation matrix label file')
-                        runproc(str("flirt -in " + self.corrlabel+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized+ '.mat') + " -out " + self.subjcorrlabel))
+                        runproc(str("flirt -in " + self.corrlabel+ " -ref " + self.thisnii + " -applyxfm -init " + (self.templatenormalized + '.mat') + " -out " + self.subjcorrlabel))
                         self.corrlabel=self.subjcorrlabel
                         
                     else:
                         logging.info('Creation of initial flirt matrix failed.')
                         raise SystemExit()
                         
+                    #save transform for segmentation
+                    self.segmenttransform=self.templatenormalized + '.mat'
+                     
                     #pictures for normalization
                     self.templatenormalized = self.templatenormalized +'.nii.gz'
                     self.meanboldnormalized =  mean_img(self.thisnii)
@@ -1357,9 +1395,11 @@ class RestPipe:
                     display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
                     self.sstemplate = self.templatenormalized #for regression
+        
+        
         #Check
-        if os.path.isfile( newfile + '.nii.gz' ):
-            
+        if os.path.isfile( newfile + '.nii.gz' ):  
+            self.oldnii = self.thisnii
             if self.prevprefix is not None:
                 self.toclean.append( self.thisnii ) 
             self.thisnii = newfile + '.nii.gz'
@@ -1381,36 +1421,88 @@ class RestPipe:
             logging.info('normalization failed.')
             raise SystemExit()
         
-   #segment tissue + regress out nuissance variables
+    #tissue ssegmentation   
     def step5(self):
-        logging.info('Segmentation and Regression of nuissance signal.')   
+        logging.info('Segmenting tissue.')
+        newfile = os.path.join(self.outpath, 'segmentation_masks')    
+        self.csfmask = newfile + '_pve_0.nii.gz'
+        self.gmmask = newfile + '_pve_1.nii.gz'
+        self.wmmask = newfile + '_pve_2.nii.gz' 
+        self.masks = [self.csfmask, self.gmmask, self.wmmask]
+        
+        if self.sst1 is None and self.t1nii is not None:
+            self.sst1 = self.t1nii
+        
+        if self.sst1 is not None:
+            logging.info('Running segmentation on T1 image.')
+            runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sst1))
+            for mask in self.masks:
+                if self.space == 'BOLD': 
+                    logging.info('Converting segmentation to BOLD space.') 
+                    if self.regmethod == 'ants':
+                        try:
+                            ants
+                        except:
+                            import ants
+                        self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
+                        if os.path.isfile(self.meanfuncbrain) == False:
+                            #first create mean_func
+                            logging.info('Mean fuctional not found, creating mean funcional.')
+                            runproc(str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain')))
+                            self.meanfuncbrain=os.path.join(self.outpath,'mean_func_brain.nii.gz')
+                        fixed = ants.image_read(self.meanfuncbrain) #mean func
+                        moving=ants.image_read(self.csfmask) #label file in template space 
+                        moving=ants.resample_image(moving, fixed.shape,True,0)
+                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=self.segmenttransform)
+                        ants.image_write(normalized, self.csfmask)
+                    elif self.regmethod == 'fsl':
+                        runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
+                        
+                if self.space == 'Template':
+                    logging.info('Converting segmentation to Template space.')
+                    if self.regmethod == 'ants':
+                        try:
+                            ants
+                        except:
+                            import ants
+                        fixed = ants.image_read(self.sstemplate)
+                        moving= ants.image_read(mask)
+                        moving= ants.resample_image(moving,fixed.shape,True,0)
+                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=self.segmenttransform)
+                        ants.image_write(normalized, mask)
+                    elif self.regmethod == 'fsl':
+                        runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + mask + " --out=" + mask + " --warp=" + self.segmenttransform))
+        else:
+            logging.info('Running segmentation on the template image.')
+            runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sstemplate))
+            for mask in self.masks:
+                if self.space == 'BOLD': 
+                    logging.info('Converting segmentation to BOLD space.')
+                    if self.regmethod == 'ants':
+                        import ants
+                        fixed = ants.image_read(self.meanfuncbrain)
+                        moving=ants.image_read(mask)
+                        moving=ants.resample_image(moving, fixed.shape,True,0)
+                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=self.segmenttransform)
+                        ants.image_write(normalized, mask)
+                    elif self.regmethod == 'fsl':
+                        runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
+        
+        
+    #regress out nuissance variables
+    def step6(self):
+        logging.info('Regression of nuissance signals.')   
         newprefix = self.prefix + '_regress'
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))          
-        
-        #Segment image   
-        if 'wm' in self.regressors or 'csf' in self.regressors:
-            if '3' not in self.steps and '4' not in self.steps:
-                self.sst1 = self.t1nii #grab the input
-            if self.sst1 is not None:
-                logging.info('Running segmentation on T1 image in analysis space.')
-                runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sst1))          
-            else:
-                logging.info('Running segmentation on template image in analysis space.')
-                runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sstemplate))
-            self.csfmask = newfile + '_pve_0.nii.gz'
-            self.gmmask = newfile + '_pve_1.nii.gz'
-            self.wmmask = newfile + '_pve_2.nii.gz'           
-         
-        #Regress motion
+            
+        #Get motion regressor
         if 'motion' in self.regressors:
-            logging.info('Motion will be regressed.')
             #import parameters from options if specified. Overrules those obtained in step two
             if options.mcparams is not None:
                 self.mcparams = options.mcparams  
                 
-        #Regress WM    
+        #Get WM regressor   
         if 'wm' in self.regressors:
-            logging.info('Extracting WM signal for regression.')      
             #mean time series for wm
             wmout = os.path.join(self.outpath,"wm_ts.txt")
             runproc(str("fslmeants -i " + self.thisnii + " -m " + self.wmmask + " -o " + wmout))
@@ -1418,9 +1510,8 @@ class RestPipe:
                     logging.info('Could not extract WM timeseries, quitting: ' + wmout)
                     raise SystemExit()
                     
-        #Regress CSF
-        if 'csf'in self.regressors:  
-            logging.info('Extracting WM signal for regression.')      
+        #Get CSF regressor
+        if 'csf'in self.regressors:       
             #mean time series for csf
             csfout = os.path.join(self.outpath,"csf_ts.txt")
             runproc(str("fslmeants -i " + self.thisnii + " -m " + self.csfmask + " -o " + csfout))
@@ -1430,6 +1521,7 @@ class RestPipe:
         
         #One step regression
         logging.info('Performing nuissance regression')
+        print("Will regress " + self.regressors)
         self.regressparams = newfile + ".par"
         self.regressparamsmat = newfile +".mat"
         
@@ -1467,7 +1559,7 @@ class RestPipe:
             raise SystemExit()
         
     #detrending
-    def step6(self):
+    def step7(self):
         logging.info('Detrending data')
         newprefix = self.prefix + "_detr"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
@@ -1489,7 +1581,7 @@ class RestPipe:
             raise SystemExit()
             
     #bandpass filter
-    def step7(self):
+    def step8(self):
         logging.info('bandpass filtering data')
         newprefix = self.prefix + "_filt"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
@@ -1515,7 +1607,7 @@ class RestPipe:
             raise SystemExit()
            
     #FWMH Smoothing
-    def step8(self):
+    def step9(self):
         logging.info('smoothing data')
         newprefix = self.prefix + "_smooth"
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))
@@ -1538,12 +1630,12 @@ class RestPipe:
             raise SystemExit() 
      
     #do the parcellation and correlation
-    def step9(self):
-        self.step9a()
-        self.step9b()
+    def step10(self):
+        self.step10a()
+        self.step10b()
         
     #do the parcellation
-    def step9a(self):
+    def step10a(self):
         logging.info('starting parcellation')
         corrtxt = os.path.join(self.outpath,'corrlabel_ts.txt')
 
@@ -1554,7 +1646,7 @@ class RestPipe:
            
        
     #do the correlation
-    def step9b(self):
+    def step10b(self):
         logging.info('starting correlation')
         rmat = os.path.join(self.outpath,'r_matrix.nii.gz')
         rtxt = os.path.join(self.outpath,'r_matrix.csv')
@@ -1651,24 +1743,10 @@ class RestPipe:
 
 
     #fcdm
-    def step10(self):
+    def step11(self):
         import fcdm
         logging.info('starting functional connectivity density mapping')
-        
-        #run segmentation if needed
-        if self.gmmask is None:
-            #Segment image   
-            self.masks = os.path.join(self.outpath,'masks')
-            if self.t1nii is not None:
-                logging.info('Running segmentation on T1 image in analysis space.')
-                runproc(str("fast -t 1 -n 3 -o " + self.masks + " " + self.t1nii))         
-            else:
-                logging.info('Running segmentation on template image in analysis space.')
-                runproc(str("fast -t 1 -n 3 -o " + self.masks + " " + self.sstemplate))
-            self.csfmask = self.masks + '_pve_0.nii.gz'
-            self.gmmask = self.masks + '_pve_1.nii.gz'
-            self.wmmask = self.masks + '_pve_2.nii.gz'
-        
+           
         #load nifti data
         data = nibabel.nifti1.load(self.thisnii)
         #data1 = data.get_data()
@@ -1999,4 +2077,5 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
+
 
