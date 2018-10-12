@@ -1,4 +1,4 @@
-# FunCPy
+# FunConPy
 Resting state fMRI functional connectivity preprocessing in Python using [FSL](https://fsl.fmrib.ox.ac.uk/fsl/fslwiki), [AFNI](https://afni.nimh.nih.gov/) and [ANTs](https://github.com/ANTsX/ANTs).
 
 This pipeline is a collection of steps that can be used to process a single subject's resting state data from raw into a node based correlation matrix representing connectivity between different regions of the brain.
