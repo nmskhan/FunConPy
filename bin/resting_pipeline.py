@@ -24,15 +24,21 @@ import re
 import networkx as nx
 import logging
 import math
-from optparse import OptionParser
+import argparse
+from argparse import ArgumentParser
 from nilearn import plotting
 from nilearn.image.image import mean_img
 import matplotlib as plt
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
+def afile(string):
+    if not os.path.isfile(string):
+        msg = "%r not found." % string
+        raise argparse.ArgumentTypeError(msg)
+    return string
 
-usage ="""
+description ="""
 resting_pipeline.py --func /path/to/run4.bxh --steps all --outpath /here/ -p func
 Program to run through Nan-kuei Chen's resting state analysis pipeline:
     steps:
@@ -55,56 +61,50 @@ Program to run through Nan-kuei Chen's resting state analysis pipeline:
     10 - Functional connectivity density mapping
 """
 
-parser = OptionParser(usage=usage)
-parser.add_option("-f", "--func",  action="store", type="string", dest="funcfile",help="bxh ( or nifti ) file for functional run", metavar="/path/to/BXH")
-parser.add_option("--throwaway",  action="store", type="int", dest="throwaway",help="number of timepoints to dis-regard from beginning of run", metavar="4")
-parser.add_option("--t1",  action="store", type="string", dest="anatfile",help="bxh ( or nifti ) file for the anatomical T1", metavar="/path/to/BXH")
-parser.add_option("-p", "--prefix",  action="store", type="string", dest="prefix",help="prefix for all resulting images, defaults to name of input", metavar="func")
-parser.add_option("-s", "--steps",  action="store", type="string", dest="steps",help="comma seperated string of steps. 'all' will run everything, default is all", metavar="0,1,2,3", default='all')
-parser.add_option("-o","--outpath",  action="store",type="string", dest="outpath",help="location to store output files", metavar="PATH", default='PWD')
-parser.add_option("--sliceorder",  action="store",type="choice", choices=['odd', 'up', 'even', 'down'], dest="sliceorder",help="sliceorder if slicetime correction ( odd=interleaved (1,3,5,2,4,6), up=ascending, down=descending, even=interleaved (2,4,6,1,3,5) ).  Default is to read this from input image, if available.", metavar="string")
-parser.add_option("--tr",  action="store", type="float", dest="tr_ms",help="TR of functional data in MSEC", metavar="MSEC")
-parser.add_option("--ssref",  action="store", type="string", dest="sstemplate",help="Pointer to skullstripped template reference image if not using standard brain.", metavar="FILE")
-parser.add_option("--ref",  action="store", type="string", dest="template",help="Pointer to skullon template reference image if not using standard brain", metavar="FILE")
-parser.add_option("--gmmask",  action="store", type="string", dest="gmmask",help="Pointer to GM mask of reference image if not using standard brain", metavar="FILE")
-parser.add_option("--refbrainmask",  action="store", type="string", dest="refbrainmask",help="pointer to brain mask of reference image if not using standard brain", metavar="FILE")
-parser.add_option("--fnirtbrainmask",  action="store", type="string", dest="fnirtbrainmask",help="pointer to a brain mask of reference image if not using standard brain for fnirt", metavar="FILE")
-parser.add_option("--fnirtconfig",  action="store", type="string", dest="fnirtconfig",help="Pointer to a configuration file for fnirt.", metavar="FILE")
-parser.add_option("--mcparams",  action="store", type="string", dest="mcparams",help="pointer to motion parameters file in .par file type", metavar="FILE.par")
-parser.add_option("--fwhm",  action="store", type="int", dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
-parser.add_option("--refacpoint",  action="store", type="string", dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
-parser.add_option("--skullstrip",  action="store",type="choice", choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data Default is 'bet'.", metavar="bet/afni", default='bet')
-parser.add_option("--fval",  action="store", type="float", dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
-parser.add_option("--anatfval",  action="store", type="float", dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
-parser.add_option("--regmethod",  action="store",type="choice", choices=['ants', 'fsl'], dest="regmethod",help="Register and normalize images using 'ants' or 'fsl'. Default is 'fsl'.", metavar="ants/fsl", default='fsl')
-parser.add_option("--detrend",  action="store", type="int", dest="detrend",help="polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2", default='2')
-parser.add_option("--lpfreq",  action="store", type="float", dest="lpfreq",help="frequency cutoff for lowpass filtering in HZ.  default is .08hz", metavar="0.08", default='0.08')
-parser.add_option("--hpfreq",  action="store", type="float", dest="hpfreq",help="frequency cutoff for highpass filtering in HZ.  default is .01hz", metavar="0.01", default='0.01')
-parser.add_option("--corrlabel",  action="store", type="string", dest="corrlabel",help="pointer to 3D label containing ROIs for the correlation search. default is the 116 region AAL label file", metavar="FILE")
-parser.add_option("--corrtext",  action="store", type="string", dest="corrtext",help="pointer to text file containing names/indices for ROIs for the correlation search. default is the 116 region AAL label txt file", metavar="FILE")
-parser.add_option("--corrts",  action="store", type="string", dest="corrts",help="If using step 9b by itself, this is the path to parcellation output (default is to use OUTPATH/corrlabel_ts.txt), which will be used as input to the correlation.", metavar="FILE")
-parser.add_option("--dvarsthreshold",  action="store", type="string", dest="dvarsthreshold",help="If specified, this reprsents a DVARS threshold either in BOLD units, or if ending in a '%' character, as a percentage of mean global signal intensity (over the brain mask).  Any volume contributing to a DVARS value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  DVARS calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
-parser.add_option("--dvarsnumneighbors",  action="store", type="int", dest="dvarsnumneighbors",help="If --dvarsthreshold is specified, then --dvarsnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 0.", metavar="NUMNEIGHBORS")
-parser.add_option("--fdthreshold",  action="store", type="float", dest="fdthreshold",help="If specified, this reprsents a FD threshold in mm.  Any volume contributing to a FD value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  FD calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
-parser.add_option("--fdnumneighbors",  action="store", type="int", dest="fdnumneighbors",help="If --fdthreshold is specified, then --fdnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 0.", metavar="NUMNEIGHBORS")
-parser.add_option("--motionthreshold",  action="store", type="float", dest="motionthreshold",help="If specified, any volume whose motion parameters indicate a movement greater than this threshold (in mm) will be excluded (\"scrubbed\") from the (final) correlation step.  Volume-to-volume movement is calculated per pair of neighboring volumes from the three rotational and three translational parameters generated by mcflirt.  Motion for a pair of neighboring volumes is calculated as the maximum displacement (due to the combined rotation and translation) of any voxel on the 50mm-radius sphere surrounding the center of rotation.  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
-parser.add_option("--motionnumneighbors",  action="store", type="int", dest="motionnumneighbors",help="If --motionthreshold is specified, then --motionnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 1.", metavar="NUMNEIGHBORS")
-parser.add_option("--motionpar",  action="store", type="string", dest="motionpar",help="If --motionthreshold is specified, then --motionpar specifies the .par file from which the motion parameters are extracted.  If you allow this script to perform motion correction, then this option is ignored.", metavar="FILE.par")
-parser.add_option("--scrubop",  action="store", choices=('and', 'or'), dest="scrubop", help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubop specifies the aggregation operator used to determine the final list of excluded volumes.  Default is 'or', which means a volume will be excluded if *any* of its thresholds are exceeded, whereas 'and' means all the thresholds must be exceeded to be excluded.")
-parser.add_option("--powerscrub", action="store_true", dest="powerscrub", help="Equivalent to specifying --fdthreshold=0.5 --fdnumneighbors=0 --dvarsthreshold=0.5% --dvarsnumneigbhors=0 --scrubop='and', to mimic the method used in the Power et al. article.  Any conflicting options specified before or after this will override these.", default=False)
-parser.add_option("--scrubkeepminvols",  action="store", type="int", dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
-parser.add_option("--fcdmthresh",  action="store", type="float", dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
-parser.add_option("--space",  action="store",type="choice", choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="choice of space", default='Template')
-parser.add_option("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
-parser.add_option("--motion-regression",  action="store", choices=['on', 'off'], dest="motionregression",help="Motion regression? Default is on.", metavar="on/off", default='on')
-parser.add_option("--csf-regression",  action="store", choices=['on', 'off'], dest="wmregression",help="Regress CSF signal? Default is on.", metavar="on/off", default='on')
-parser.add_option("--wm-regression",  action="store", choices=['on', 'off'], dest="csfregression",help="Regress WM signal? Default is on.", metavar="on/off", default='on')
+parser = ArgumentParser(description=description)
+parser.add_argument("-f", "--func",  action="store", type=afile, dest="funcfile",help="Bxh ( or nifti ) file for functional run", metavar="/path/to/BXH")
+parser.add_argument("--throwaway",  action="store", type=int, dest="throwaway",help="number of timepoints to dis-regard from beginning of run", metavar="4")
+parser.add_argument("--t1",  action="store", type=afile, dest="anatfile",help="bxh ( or nifti ) file for the anatomical T1", metavar="/path/to/BXH")
+parser.add_argument("-p", "--prefix",  action="store", type=str, dest="prefix",help="Prefix for all resulting images, defaults to name of input", metavar="func")
+parser.add_argument("-s", "--steps",  action="store", type=str, dest="steps",help="Comma seperated string of steps. 'all' will run everything. Default is all", metavar="0,1,2,3", default='all')
+parser.add_argument("-o","--outpath",  action="store",type=str, dest="outpath",help="Location to store output files.", metavar="PATH", default='PWD')
+parser.add_argument("--sliceorder",  action="store",type=str, choices=['odd', 'up', 'even', 'down'], dest="sliceorder",help="sliceorder if slicetime correction ( odd=interleaved (1,3,5,2,4,6), up=ascending, down=descending, even=interleaved (2,4,6,1,3,5) ).  Default is to read this from input image, if available.", metavar="string")
+parser.add_argument("--tr",  action="store", type=float, dest="tr_ms",help="TR of functional data in msec.", metavar="MSEC")
+parser.add_argument("--ssref",  action="store", type=afile, dest="sstemplate",help="Pointer to skullstripped template reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--ref",  action="store", type=afile, dest="template",help="Pointer to skullon template reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--gmmask",  action="store", type=afile, dest="gmmask",help="Pointer to GM mask of reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--refbrainmask",  action="store", type=afile, dest="refbrainmask",help="Pointer to brain mask of reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--fnirtbrainmask",  action="store", type=afile, dest="fnirtbrainmask",help="Pointer to a brain mask of reference image if not using standard brain for fnirt.", metavar="FILE")
+parser.add_argument("--fnirtconfig",  action="store", type=afile, dest="fnirtconfig",help="Pointer to a configuration file for fnirt.", metavar="FILE")
+parser.add_argument("--mcparams",  action="store", type=afile, dest="mcparams",help="Pointer to motion parameters file in .par file type.", metavar="FILE.par")
+parser.add_argument("--fwhm",  action="store", type=int, dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
+parser.add_argument("--refacpoint",  action="store", type=str, dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
+parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data Default is 'bet'.", metavar="bet/afni", default='bet')
+parser.add_argument("--fval",  action="store", type=float, choices=range(0,1), dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
+parser.add_argument("--anatfval",  action="store", type=float, choices=range(0,1), dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
+parser.add_argument("--regmethod",  action="store",type=str, choices=['ants', 'fsl'], dest="regmethod",help="Register and normalize images using 'ants' or 'fsl'. Default is 'fsl'.", metavar="ants/fsl", default='fsl')
+parser.add_argument("--detrend",  action="store", type=int, choices=range(0,4), dest="detrend",help="Polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2", default='2')
+parser.add_argument("--lpfreq",  action="store", type=float, dest="lpfreq",help="Frequency cutoff for lowpass filtering in HZ.  default is .08 Hz", metavar="0.08", default='0.08')
+parser.add_argument("--hpfreq",  action="store", type=float, dest="hpfreq",help="Frequency cutoff for highpass filtering in HZ.  default is .01 Hz", metavar="0.01", default='0.01')
+parser.add_argument("--corrlabel",  action="store", type=afile, dest="corrlabel",help="Pointer to 3D label containing ROIs for the correlation search. Fefault is the 116 region AAL label file.", metavar="FILE")
+parser.add_argument("--corrtext",  action="store", type=afile, dest="corrtext",help="Pointer to text file containing names/indices for ROIs for the correlation search. Default is the 116 region AAL label txt file.", metavar="FILE")
+parser.add_argument("--corrts",  action="store", type=str, dest="corrts",help="If using step 9b by itself, this is the path to parcellation output (default is to use OUTPATH/corrlabel_ts.txt), which will be used as input to the correlation.", metavar="FILE")
+parser.add_argument("--dvarsthreshold",  action="store", type=str, dest="dvarsthreshold",help="If specified, this reprsents a DVARS threshold either in BOLD units, or if ending in a '%' character, as a percentage of mean global signal intensity (over the brain mask).  Any volume contributing to a DVARS value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  DVARS calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
+parser.add_argument("--dvarsnumneighbors",  action="store", type=int, dest="dvarsnumneighbors",help="If --dvarsthreshold is specified, then --dvarsnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 0.", metavar="NUMNEIGHBORS")
+parser.add_argument("--fdthreshold",  action="store", type=float, dest="fdthreshold",help="If specified, this reprsents a FD threshold in mm.  Any volume contributing to a FD value greater than this threshold will be excluded (\"scrubbed\") from the (final) correlation step.  FD calculation is performed on the results of the last pre-processing step, and is calculated as described by Power, J.D., et al., \"Spurious but systematic correlations in functional connectivity MRI networks arise from subject motion\", NeuroImage(2011).  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
+parser.add_argument("--fdnumneighbors",  action="store", type=int, dest="fdnumneighbors",help="If --fdthreshold is specified, then --fdnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 0.", metavar="NUMNEIGHBORS")
+parser.add_argument("--motionthreshold",  action="store", type=float, dest="motionthreshold",help="If specified, any volume whose motion parameters indicate a movement greater than this threshold (in mm) will be excluded (\"scrubbed\") from the (final) correlation step.  Volume-to-volume movement is calculated per pair of neighboring volumes from the three rotational and three translational parameters generated by mcflirt.  Motion for a pair of neighboring volumes is calculated as the maximum displacement (due to the combined rotation and translation) of any voxel on the 50mm-radius sphere surrounding the center of rotation.  Note: data is only excluded during the final correlation, and so will never affect any operations that require the full signal, like regression, etc.", metavar="THRESH")
+parser.add_argument("--motionnumneighbors",  action="store", type=int, dest="motionnumneighbors",help="If --motionthreshold is specified, then --motionnumnumneighbors specifies how many neighboring volumes, before and after the initially excluded volumes, should also be excluded.  Default is 1.", metavar="NUMNEIGHBORS")
+parser.add_argument("--motionpar",  action="store", type=str, dest="motionpar",help="If --motionthreshold is specified, then --motionpar specifies the .par file from which the motion parameters are extracted.  If you allow this script to perform motion correction, then this option is ignored.", metavar="FILE.par")
+parser.add_argument("--scrubop",  action="store", type=str, choices=['and', 'or'], dest="scrubop", help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubop specifies the aggregation operator used to determine the final list of excluded volumes.  Default is 'or', which means a volume will be excluded if *any* of its thresholds are exceeded, whereas 'and' means all the thresholds must be exceeded to be excluded.")
+parser.add_argument("--powerscrub", action="store_true", dest="powerscrub", help="Equivalent to specifying --fdthreshold=0.5 --fdnumneighbors=0 --dvarsthreshold=0.5% --dvarsnumneigbhors=0 --scrubop='and', to mimic the method used in the Power et al. article.  Any conflicting options specified before or after this will override these.", default=False)
+parser.add_argument("--scrubkeepminvols",  action="store", type=int, dest="scrubkeepminvols",help="If --motionthreshold, --dvarsthreshold, or --fdthreshold are specified, then --scrubminvols specifies the minimum number of volumes that should pass the threshold before doing any correlation.  If the minimum is not met, then the script exits with an error.  Default is to have no minimum.", metavar="NUMVOLS")
+parser.add_argument("--fcdmthresh",  action="store", type=float, dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step8 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
+parser.add_argument("--space",  action="store",type=str, choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="choice of space", default='Template')
+parser.add_argument("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
+parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion'], nargs='*', help="List regressors to use in step 5 separated by space. Default is motion, wm amd csf", metavar="REGRESSORS", default=['motion', 'wm', 'csf'])
 
-options, args = parser.parse_args()
-
-if len(args) > 0:
-    sys.stderr.write("Too many arguments!  Try --help.")
-    raise SystemExit()
+options = parser.parse_args()
 
 if '-h' in sys.argv:
 
@@ -226,9 +226,7 @@ class RestPipe:
             raise SystemExit()
             
         #regressors
-        self.motionregression = options.motionregression
-        self.csfregression = options.csfregression
-        self.wmregression = options.wmregression
+        self.regressors = options.regressors
         
         #grab gm mask
         self.gmmask = options.gmmask
@@ -328,7 +326,7 @@ class RestPipe:
         
         #grab motion parameters if needed
         self.mcparams = options.mcparams
-        if '2' not in self.steps and self.mcparams is None and self.motionregression == 'on' and '5' in self.steps:
+        if '2' not in self.steps and self.mcparams is None and 'motion' in self.regressors and '5' in self.steps:
             print("You have chosen not to perform motion correction, but to regress motion. You must provide the motion parameters to regress with --mcparams.")
             raise SystemExit()
         
@@ -557,7 +555,7 @@ class RestPipe:
                 raise SystemExit()
                 
         #make sure motion regression is possible     
-        if options.motionregression == 'on' and '2' not in self.steps and options.mcparams is None:
+        if 'motion' in self.regressors and '2' not in self.steps and options.mcparams is None:
             logging.info("Performing motion regression, but motion regressors not found and not being calculated. Please provide motion regressors, run step 2, or skip motion regression.")
             raise SystemExit()
             
@@ -1467,7 +1465,7 @@ class RestPipe:
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))          
         
         #Segment image   
-        if self.wmregression == 'on' or self.csfregression == 'on':
+        if 'wm' in self.regressors or 'csf' in self.regressors:
             if '3' not in self.steps and '4' not in self.steps:
                 self.sst1 = self.t1nii #grab the input
             if self.sst1 is not None:
@@ -1485,14 +1483,14 @@ class RestPipe:
             self.wmmask = newfile + '_pve_2.nii.gz'           
          
         #Regress motion
-        if self.motionregression == 'on':
+        if 'motion' in self.regressors:
             logging.info('Motion will be regressed.')
             #import parameters from options if specified. Overrules those obtained in step two
             if options.mcparams is not None:
                 self.mcparams = options.mcparams  
                 
         #Regress WM    
-        if self.wmregression == 'on':     
+        if 'wm' in self.regressors:
             logging.info('Extracting WM signal for regression.')      
             #mean time series for wm
             wmout = os.path.join(self.outpath,"wm_ts.txt")
@@ -1504,7 +1502,7 @@ class RestPipe:
                     raise SystemExit()
                     
         #Regress CSF
-        if self.csfregression == 'on':   
+        if 'csf'in self.regressors:  
             logging.info('Extracting WM signal for regression.')      
             #mean time series for csf
             csfout = os.path.join(self.outpath,"csf_ts.txt")
@@ -1525,11 +1523,11 @@ class RestPipe:
         wm_ts=np.array([])
         csf_ts=np.array([])
         
-        if self.motionregression == 'on':
+        if 'motion' in self.regressors:
             motion_ts=np.loadtxt(self.mcparams, unpack=True)
-        if self.wmregression == 'on':
+        if 'wm' in self.regressors:
             wm_ts = np.loadtxt(wmout,unpack=True)
-        if self.csfregression == 'on':
+        if 'csf' in self.regressors:
             csf_ts = np.loadtxt(csfout,unpack=True)
         regressors_ts = np.stack((wm_ts, csf_ts, motion_ts),axis=1)
         np.savetxt(self.regressparams, regressors_ts)
