@@ -560,14 +560,7 @@ class RestPipe:
             logging.info('Registration will overrule the transformation that was provided for segmentation.') 
         
         #check segment transform file type
-        if self.segmenttransform is not None and (self.segmenttransform.endswith('.mat') or self.segmenttransform.endswith('.nii') or self.segmenttransform.endswith('.nii.gz')):
-            if self.regmethod == 'ants' and self.segmenttransform.endswith('.mat'):
-                logging.info('Wrong file type %s', self.segmenttransform)
-                raise SystemExit()
-            if self.regmethod == 'fsl' and (self.segmenttransform.endswith('.nii') or self.segmenttransform.endswith('.nii.gz')):
-                logging.info('Wrong file type %s', self.segmenttransform)
-                raise SystemExit()
-        elif self.segmenttransform is not None:
+        if self.segmenttransform is not None and not (self.segmenttransform.endswith('.mat') or self.segmenttransform.endswith('.nii') or self.segmenttransform.endswith('.nii.gz')):
             logging.info('Wrong file type %s', self.segmenttransform)
             raise SystemExit()
         
@@ -815,8 +808,7 @@ class RestPipe:
                     #apply the transform
                     logging.info('Coregistering func')
                     moving=ants.image_read(self.thisnii) #orig func
-                    func2t1 = tx_func2t1['fwdtransforms']
-                    coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=func2t1[0])
+                    coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=tx_func2t1['fwdtransforms'])
                     ants.image_write(coregistered, self.boldcoregistered)
                 
                     #SyN the t1 to standard
@@ -824,8 +816,7 @@ class RestPipe:
                     fixed = ants.image_read(self.sstemplate)
                     moving = ants.image_read(self.t1nii)
                     moving=ants.resample_image(moving,reference.shape,True,0)
-                    tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN')
-                    t12standard = tx_t12standard['fwdtransforms']
+                    tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN', outprefix=self.regoutpath) 
                     t1normalizedimg = tx_t12standard['warpedmovout']
                     ants.image_write(t1normalizedimg, self.t1normalized)
     
@@ -835,11 +826,11 @@ class RestPipe:
                     moving=ants.image_read(self.boldcoregistered) #4d fmri in t1 space  
                     vector=reference.shape + (moving.shape[3],)
                     moving=ants.resample_image(moving,vector,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=t12standard[0])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=tx_t12standard['fwdtransforms'])
                     ants.image_write(normalized, out_file)
                     
                     #save transform for segmentation
-                    self.segmenttransform=t12standard[0]
+                    self.segmenttransform=tx_t12standard['fwdtransforms']
                     
                     #Images to check normalization
                     #bold on t1
@@ -892,8 +883,7 @@ class RestPipe:
                 #apply the transform
                 logging.info('Coregistering func')
                 moving=ants.image_read(self.thisnii) #orig func
-                func2t1 = tx_func2t1['fwdtransforms']
-                coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=func2t1[0])
+                coregistered = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=tx_func2t1['fwdtransforms'])
                 ants.image_write(coregistered, self.boldcoregistered)
                 
                 #SyN the t1 to standard
@@ -902,7 +892,6 @@ class RestPipe:
                 moving = ants.image_read(self.sstemplate)
                 moving=ants.resample_image(moving,fixed.shape,True,0)
                 tx_standard2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN')
-                standard2t1 = tx_standard2t1['fwdtransforms']
                 templatenormalizedimg = tx_standard2t1['warpedmovout']
                 ants.image_write(templatenormalizedimg, self.templatenormalized)
                 
@@ -911,7 +900,7 @@ class RestPipe:
                 fixed = ants.image_read(self.t1nii)
                 moving=ants.image_read(self.corrlabel) #label file in template space 
                 moving=ants.resample_image(moving, fixed.shape,True,0)
-                normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=standard2t1[0])
+                normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_standard2t1['fwdtransforms'])
                 ants.image_write(normalized, self.subjcorrlabel)
                 self.corrlabel=self.subjcorrlabel
                 
@@ -953,17 +942,15 @@ class RestPipe:
                     moving = ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
                     tx_standard2t1 = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN')
-                    standard2t1 = tx_standard2t1['fwdtransforms']
                     template_t1img = tx_standard2t1['warpedmovout']
                     ants.image_write(template_t1img,self.templateont1)
                     
-                    #T1 to rigid registration
+                    #T1 to BOLD rigid registration
                     logging.info('ANTs T1 to func')
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving = ants.image_read(self.t1nii)
                     fixed=ants.resample_image(fixed,moving.shape,True,0)
-                    tx_t12func = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine')
-                    t12func = tx_t12func['fwdtransforms']
+                    tx_t12func = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine', outprefix=self.regoutpath)
                     coregistered = tx_t12func['warpedmovout']
                     ants.image_write(coregistered, self.t1coregistered)
                     
@@ -971,7 +958,7 @@ class RestPipe:
                     logging.info('Normalizing template from T1 to BOLD')
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.resample_image(template_t1img, fixed.shape, True, 0)
-                    templatenormalizedimg = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=t12func[0])
+                    templatenormalizedimg = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_t12func['fwdtransforms'])
                     ants.image_write(templatenormalizedimg, self.templatenormalized)
         
                     #Apply the transforms to label file
@@ -979,15 +966,15 @@ class RestPipe:
                     fixed = ants.image_read(self.t1nii) #mean func
                     moving=ants.image_read(self.corrlabel) #label file in template space 
                     moving=ants.resample_image(moving, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=standard2t1[0])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_standard2t1['fwdtransforms'])
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.resample_image(normalized, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=t12func[0])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_t12func['fwdtransforms'])
                     ants.image_write(normalized, self.subjcorrlabel)
                     self.corrlabel=self.subjcorrlabel
                     
                     #save transform for segmentation
-                    self.segmenttransform=t12func[0]
+                    self.segmenttransform=tx_t12func['fwdtransforms']
                     
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
@@ -1010,24 +997,25 @@ class RestPipe:
                     
                 else:
                     #use the functional to get the matrix
-                    #func to T1 affine + nonlinear registration
+                    #template to bold affine + nonlinear registration
                     logging.info('ANTs Template to Func')
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
-                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff')
-                    template2func = tx_template2func['fwdtransforms']
+                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff', outprefix = self.regoutpath)
+                    templatenormalizedimg = tx_template2func['warpedmovout']
+                    ants.image_write(templatenormalizedimg, self.templatenormalized)
                     
                     #normalize label file
                     logging.info('Normalizing label file')
                     moving=ants.image_read(self.corrlabel) #label file in template space 
                     moving=ants.resample_image(moving, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=template2func[0])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_template2func['fwdtransforms'])
                     ants.image_write(normalized, self.subjcorrlabel)
                     self.corrlabel=self.subjcorrlabel
 
                     #save transform for segmentation
-                    self.segmenttransform=template2func[0]
+                    self.segmenttransform=tx_template2func['fwdtransforms']
 
                     #make images to check normalization
                     self.meanbold =  mean_img(out_file)
@@ -1424,7 +1412,7 @@ class RestPipe:
     #tissue ssegmentation   
     def step5(self):
         logging.info('Segmenting tissue.')
-        newfile = os.path.join(self.outpath, 'segmentation_masks')    
+        newfile = os.path.join(self.outpath, 'SegmentationMasks', 'mask')    
         self.csfmask = newfile + '_pve_0.nii.gz'
         self.gmmask = newfile + '_pve_1.nii.gz'
         self.wmmask = newfile + '_pve_2.nii.gz' 
@@ -1440,10 +1428,7 @@ class RestPipe:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.') 
                     if self.regmethod == 'ants':
-                        try:
-                            ants
-                        except:
-                            import ants
+                        import ants
                         self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
                         if os.path.isfile(self.meanfuncbrain) == False:
                             #first create mean_func
@@ -1461,10 +1446,7 @@ class RestPipe:
                 if self.space == 'Template':
                     logging.info('Converting segmentation to Template space.')
                     if self.regmethod == 'ants':
-                        try:
-                            ants
-                        except:
-                            import ants
+                        import ants
                         fixed = ants.image_read(self.sstemplate)
                         moving= ants.image_read(mask)
                         moving= ants.resample_image(moving,fixed.shape,True,0)
