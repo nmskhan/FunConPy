@@ -816,7 +816,7 @@ class RestPipe:
                     fixed = ants.image_read(self.sstemplate)
                     moving = ants.image_read(self.t1nii)
                     moving=ants.resample_image(moving,reference.shape,True,0)
-                    tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN', outprefix=self.regoutpath) 
+                    tx_t12standard = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyN', outprefix=os.path.join(self.regoutpath, 'ants_')) 
                     t1normalizedimg = tx_t12standard['warpedmovout']
                     ants.image_write(t1normalizedimg, self.t1normalized)
     
@@ -950,7 +950,7 @@ class RestPipe:
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving = ants.image_read(self.t1nii)
                     fixed=ants.resample_image(fixed,moving.shape,True,0)
-                    tx_t12func = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine', outprefix=self.regoutpath)
+                    tx_t12func = ants.registration(fixed=fixed, moving=moving, type_of_transform='BOLDAffine', outprefix=os.path.join(self.regoutpath, 'ants_'))
                     coregistered = tx_t12func['warpedmovout']
                     ants.image_write(coregistered, self.t1coregistered)
                     
@@ -1002,7 +1002,7 @@ class RestPipe:
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
-                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff', outprefix = self.regoutpath)
+                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff', outprefix = os.path.join(self.regoutpath, 'ants_'))
                     templatenormalizedimg = tx_template2func['warpedmovout']
                     ants.image_write(templatenormalizedimg, self.templatenormalized)
                     
@@ -1417,6 +1417,8 @@ class RestPipe:
         self.gmmask = newfile + '_pve_1.nii.gz'
         self.wmmask = newfile + '_pve_2.nii.gz' 
         self.masks = [self.csfmask, self.gmmask, self.wmmask]
+        if not os.path.isdir(os.path.join(self.outpath, 'SegmentationMasks')):
+            os.makedirs(os.path.join(self.outpath, 'SegmentationMasks'))
         
         if self.sst1 is None and self.t1nii is not None:
             self.sst1 = self.t1nii
@@ -1456,7 +1458,7 @@ class RestPipe:
                         runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + mask + " --out=" + mask + " --warp=" + self.segmenttransform))
         else:
             logging.info('Running segmentation on the template image.')
-            runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sstemplate))
+            runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sstemplate)) #change this?
             for mask in self.masks:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.')
