@@ -337,6 +337,7 @@ class RestPipe:
         self.segmenttransform = options.segmenttransform
         self.sliceorder = options.sliceorder
         self.throwaway = options.throwaway
+        self.sst1=None
         self.scrubop = 'or'
         self.dvarsthreshold = None
         self.dvarsnumneighbors = 0
@@ -908,7 +909,7 @@ class RestPipe:
                 fixed = ants.image_read(self.t1nii)
                 moving=ants.image_read(self.corrlabel) #label file in template space 
                 moving=ants.resample_image(moving, fixed.shape,True,0)
-                normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_standard2t1['fwdtransforms'])
+                normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=tx_standard2t1['fwdtransforms'])
                 ants.image_write(normalized, self.subjcorrlabel)
                 self.corrlabel=self.subjcorrlabel
                 
@@ -967,7 +968,7 @@ class RestPipe:
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.image_read(self.templateont1)
                     moving=ants.resample_image(moving, fixed.shape, True, 0)
-                    templatenormalizedimg = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_t12func['fwdtransforms'])
+                    templatenormalizedimg = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=tx_t12func['fwdtransforms'])
                     ants.image_write(templatenormalizedimg, self.templatenormalized)
         
                     #Apply the transforms to label file
@@ -975,10 +976,10 @@ class RestPipe:
                     fixed = ants.image_read(self.t1nii) #mean func
                     moving=ants.image_read(self.corrlabel) #label file in template space 
                     moving=ants.resample_image(moving, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_standard2t1['fwdtransforms'])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=tx_standard2t1['fwdtransforms'])
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.resample_image(normalized, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_t12func['fwdtransforms'])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=tx_t12func['fwdtransforms'])
                     ants.image_write(normalized, self.subjcorrlabel)
                     self.corrlabel=self.subjcorrlabel
                     
@@ -1019,7 +1020,7 @@ class RestPipe:
                     logging.info('Normalizing label file')
                     moving=ants.image_read(self.corrlabel) #label file in template space 
                     moving=ants.resample_image(moving, fixed.shape,True,0)
-                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_template2func['fwdtransforms'])
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=tx_template2func['fwdtransforms'])
                     ants.image_write(normalized, self.subjcorrlabel)
                     self.corrlabel=self.subjcorrlabel
 
@@ -1429,9 +1430,15 @@ class RestPipe:
             self.sst1 = self.t1nii
         
         if self.sst1 is not None:
-            logging.info('Running segmentation on T1 image.')
-            runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1))
+            import ants
+            self.sst1_2mm=os.path.join(self.segoutpath, 't1_2mm.nii.gz')
+            fixed = ants.image_read(self.sstemplate)
+            moving = ants.image_read(self.sst1)
+            moving = ants.resample_image(moving,fixed.shape,True,0)
+            ants.image_write(moving, self.sst1_2mm)
             
+            logging.info('Running segmentation on T1 image.')
+            runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_2mm))
             for mask in self.masks:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.') 
@@ -1444,10 +1451,10 @@ class RestPipe:
                             runproc(str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain')))
                             self.meanfuncbrain=os.path.join(self.outpath,'mean_func_brain.nii.gz')
                         fixed = ants.image_read(self.meanfuncbrain) #mean func
-                        moving=ants.image_read(self.csfmask) #label file in template space 
+                        moving=ants.image_read(mask) #label file in template space 
                         moving=ants.resample_image(moving, fixed.shape,True,0)
                         normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=self.segmenttransform)
-                        ants.image_write(normalized, self.csfmask)
+                        ants.image_write(normalized, mask)
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
                         
@@ -1464,7 +1471,14 @@ class RestPipe:
                         runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + mask + " --out=" + mask + " --warp=" + self.segmenttransform))
         else:
             logging.info('Running segmentation on the template image.')
-            runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sstemplate)) #change this?
+            if options.sstemplate is None:
+                self.csfmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_0.nii.gz')
+                self.gmmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_1.nii.gz')
+                self.wmmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_2.nii.gz')
+                self.masks = [self.csfmask, self.gmmask, self.wmmask]
+            else:
+                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sstemplate)) #change this?
+            
             for mask in self.masks:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.')
@@ -1473,7 +1487,7 @@ class RestPipe:
                         fixed = ants.image_read(self.meanfuncbrain)
                         moving=ants.image_read(mask)
                         moving=ants.resample_image(moving, fixed.shape,True,0)
-                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=self.segmenttransform)
+                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=self.segmenttransform)
                         ants.image_write(normalized, mask)
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
