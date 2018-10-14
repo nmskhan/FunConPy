@@ -1514,18 +1514,19 @@ class RestPipe:
         self.regressparams = newfile + ".par"
         self.regressparamsmat = newfile +".mat"
         
-        #initialize arrays
-        motion_ts=np.array([])
-        wm_ts=np.array([])
-        csf_ts=np.array([])
+        #load regressors and combine them
         
         if 'motion' in self.regressors:
             motion_ts=np.loadtxt(self.mcparams, unpack=True)
+            motion_ts=motion_ts.transpose()
         if 'wm' in self.regressors:
             wm_ts = np.loadtxt(wmout,unpack=True)
+            wm_ts = wm_ts[:,None]
         if 'csf' in self.regressors:
             csf_ts = np.loadtxt(csfout,unpack=True)
-        regressors_ts = np.stack((wm_ts, csf_ts, motion_ts),axis=1)
+            csf_ts=csf_ts[:,None]
+            
+        regressors_ts = np.concatenate([regressor for regressor in [wm_ts, csf_ts, motion_ts] if regressor.size > 0 ], axis=1)
         np.savetxt(self.regressparams, regressors_ts)
         
         #convert regressor params to .mat file
