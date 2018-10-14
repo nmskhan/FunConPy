@@ -1439,6 +1439,7 @@ class RestPipe:
             
             logging.info('Running segmentation on T1 image.')
             runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_2mm))
+            
             for mask in self.masks:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.') 
@@ -1457,7 +1458,12 @@ class RestPipe:
                         ants.image_write(normalized, mask)
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
-                        
+                if self.space == 'T1':
+                    logging.info('Upscaling segmentation.') 
+                    fixed = ants.image_read(self.sst1) #mean func
+                    moving=ants.image_read(mask)
+                    moving=ants.resample_image(moving, fixed.shape, True, 0)
+                    ants.image_write(moving, mask)
                 if self.space == 'Template':
                     logging.info('Converting segmentation to Template space.')
                     if self.regmethod == 'ants':
