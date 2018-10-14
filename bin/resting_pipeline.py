@@ -854,13 +854,17 @@ class RestPipe:
            
                 else:
                     #use the functional to get the matrix
-                    #func to T1 affine + nonlinear registration
+                    #func to Template affine + nonlinear registration
                     logging.info('ANTs func to template')
                     moving = ants.image_read(self.meanfuncbrain) #mean func
                     fixed=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
                     tx_func2template = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
-                    normalized = tx_func2template['warpedmovout']
+                    
+                    #then apply, as for some reason it doesn't output 4D data above
+                    logging.info('Normalizing func')
+                    moving=ants.image_read(self.thisnii) #orig func
+                    normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=3, transformlist=tx_func2template['fwdtransforms'])
                     ants.image_write(normalized, out_file)
                     
                     #Images to check normalization
@@ -1578,10 +1582,7 @@ class RestPipe:
         lpfreq = self.lpfreq        
         hpfreq = self.hpfreq
 
-        if self.t1nii is None or self.space =='BOLD':
-            bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.thisnii))
-        else:
-            bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.t1nii))
+        bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.thisnii))
         bandpass.run()
 
         if os.path.isfile(newfile):
