@@ -410,7 +410,11 @@ class RestPipe:
             self.regoutpath = os.path.join(self.outpath, 'NormalizationFiles',)
             if not (os.path.exists(self.regoutpath)):
                 os.mkdir( self.regoutpath)
-        
+        if '5' in self.steps:
+            self.segoutpath = os.path.join(self.outpath, 'SegmentationFiles')    
+            if not os.path.isdir(self.segoutpath):
+                os.makedirs(self.segoutpath)
+       
         #place to put temp stuff
         if ( os.getenv('TMPDIR') ):
             self.tmpdir = os.getenv('TMPDIR')
@@ -855,7 +859,7 @@ class RestPipe:
                     moving = ants.image_read(self.meanfuncbrain) #mean func
                     fixed=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
-                    tx_func2template = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff')
+                    tx_func2template = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
                     normalized = tx_func2template['warpedmovout']
                     ants.image_write(normalized, out_file)
                     
@@ -955,9 +959,10 @@ class RestPipe:
                     ants.image_write(coregistered, self.t1coregistered)
                     
                     #Apply to template
-                    logging.info('Normalizing template from T1 to BOLD')
+                    logging.info('Normalizing Template from T1 to BOLD')
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
-                    moving=ants.resample_image(template_t1img, fixed.shape, True, 0)
+                    moving=ants.image_read(self.templateont1)
+                    moving=ants.resample_image(moving, fixed.shape, True, 0)
                     templatenormalizedimg = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=tx_t12func['fwdtransforms'])
                     ants.image_write(templatenormalizedimg, self.templatenormalized)
         
@@ -1002,7 +1007,7 @@ class RestPipe:
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
-                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBOLDAff', outprefix = os.path.join(self.regoutpath, 'ants_'))
+                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff', outprefix = os.path.join(self.regoutpath, 'ants_'))
                     templatenormalizedimg = tx_template2func['warpedmovout']
                     ants.image_write(templatenormalizedimg, self.templatenormalized)
                     
@@ -1027,7 +1032,6 @@ class RestPipe:
                     display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
-                    self.sstemplate = self.templatenormalized #for regressors
 
         #FSL
         elif self.regmethod == 'fsl':
@@ -1382,7 +1386,6 @@ class RestPipe:
                     display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanboldnormalized, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
-                    self.sstemplate = self.templatenormalized #for regression
         
         
         #Check
@@ -1412,20 +1415,19 @@ class RestPipe:
     #tissue ssegmentation   
     def step5(self):
         logging.info('Segmenting tissue.')
-        newfile = os.path.join(self.outpath, 'SegmentationMasks', 'mask')    
-        self.csfmask = newfile + '_pve_0.nii.gz'
-        self.gmmask = newfile + '_pve_1.nii.gz'
-        self.wmmask = newfile + '_pve_2.nii.gz' 
+  
+        self.csfmask = os.path.join(self.segoutpath, 'mask_pve_0.nii.gz')
+        self.gmmask = os.path.join(self.segoutpath, 'mask_pve_1.nii.gz')
+        self.wmmask = os.path.join(self.segoutpath, 'mask_pve_2.nii.gz')
         self.masks = [self.csfmask, self.gmmask, self.wmmask]
-        if not os.path.isdir(os.path.join(self.outpath, 'SegmentationMasks')):
-            os.makedirs(os.path.join(self.outpath, 'SegmentationMasks'))
         
         if self.sst1 is None and self.t1nii is not None:
             self.sst1 = self.t1nii
         
         if self.sst1 is not None:
             logging.info('Running segmentation on T1 image.')
-            runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sst1))
+            runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1))
+            
             for mask in self.masks:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.') 
@@ -1440,7 +1442,7 @@ class RestPipe:
                         fixed = ants.image_read(self.meanfuncbrain) #mean func
                         moving=ants.image_read(self.csfmask) #label file in template space 
                         moving=ants.resample_image(moving, fixed.shape,True,0)
-                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=self.segmenttransform)
+                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=self.segmenttransform)
                         ants.image_write(normalized, self.csfmask)
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
@@ -1450,15 +1452,15 @@ class RestPipe:
                     if self.regmethod == 'ants':
                         import ants
                         fixed = ants.image_read(self.sstemplate)
-                        moving= ants.image_read(mask)
-                        moving= ants.resample_image(moving,fixed.shape,True,0)
-                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, imagetype=2, transformlist=self.segmenttransform)
+                        moving = ants.image_read(mask)
+                        moving = ants.resample_image(moving,fixed.shape,True,0)
+                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=self.segmenttransform)
                         ants.image_write(normalized, mask)
                     elif self.regmethod == 'fsl':
                         runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + mask + " --out=" + mask + " --warp=" + self.segmenttransform))
         else:
             logging.info('Running segmentation on the template image.')
-            runproc(str("fast -t 1 -n 3 -o " + newfile + " " + self.sstemplate)) #change this?
+            runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sstemplate)) #change this?
             for mask in self.masks:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.')
@@ -1475,10 +1477,14 @@ class RestPipe:
         
     #regress out nuissance variables
     def step6(self):
-        logging.info('Regression of nuissance signals.')   
+        logging.info('Nuissance regression.')   
         newprefix = self.prefix + '_regress'
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))          
-            
+        
+        regressorsstr = " ".join(str(regressor) for regressor in self.regressors)
+        print("Will regress " + regressorsstr)
+        
+        #Get regressors
         #Get motion regressor
         if 'motion' in self.regressors:
             #import parameters from options if specified. Overrules those obtained in step two
@@ -1504,8 +1510,7 @@ class RestPipe:
                     raise SystemExit()
         
         #One step regression
-        logging.info('Performing nuissance regression')
-        print("Will regress " + self.regressors)
+        logging.info('Combining and regressing nuissance variables')
         self.regressparams = newfile + ".par"
         self.regressparamsmat = newfile +".mat"
         
