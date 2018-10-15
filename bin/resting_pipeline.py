@@ -87,7 +87,7 @@ parser.add_argument("--fnirtconfig",  action="store", type=afile, dest="fnirtcon
 parser.add_argument("--mcparams",  action="store", type=afile, dest="mcparams",help="Pointer to motion parameters file in .par file type.", metavar="FILE.par")
 parser.add_argument("--fwhm",  action="store", type=int, dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
 parser.add_argument("--refacpoint",  action="store", type=str, dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
-parser.add_argument("--flirtcost",  action="store", type=str, choices=['mutualinfo', 'corrratio', 'normmi', 'bbr'], dest="flirtcost",help="Cost function for flirt registration of BOLD images. Default is 'bbr'.", metavar="cost function", default='bbr')
+parser.add_argument("--flirtcost",  action="store", type=str, choices=['mutualinfo', 'corrratio', 'normmi', 'bbr'], dest="flirtcost",help="Cost function for flirt registration of BOLD images. Default is 'corratio'.", metavar="cost function", default='corratio')
 parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data. Default is 'bet'.", metavar="bet/afni", default='bet')
 parser.add_argument("--fval",  action="store", type=float, choices=range(0,1), dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
 parser.add_argument("--anatfval",  action="store", type=float, choices=range(0,1), dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
@@ -1449,7 +1449,7 @@ class RestPipe:
                         if os.path.isfile(self.meanfuncbrain) == False:
                             #first create mean_func
                             logging.info('Mean fuctional not found, creating mean funcional.')
-                            runproc(str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain')))
+                            runproc(str("fslmaths " + self.oldnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain')))
                             self.meanfuncbrain=os.path.join(self.outpath,'mean_func_brain.nii.gz')
                         fixed = ants.image_read(self.meanfuncbrain) #mean func
                         moving=ants.image_read(mask) #label file in template space 
@@ -1490,11 +1490,18 @@ class RestPipe:
                     logging.info('Converting segmentation to BOLD space.')
                     if self.regmethod == 'ants':
                         import ants
+                        if os.path.isfile(self.meanfuncbrain) == False:
+                            #first create mean_func
+                            logging.info('Mean fuctional not found, creating mean funcional.')
+                            runproc(str("fslmaths " + self.oldnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain')))
+                            self.meanfuncbrain=os.path.join(self.outpath,'mean_func_brain.nii.gz')
                         fixed = ants.image_read(self.meanfuncbrain)
                         moving=ants.image_read(mask)
                         moving=ants.resample_image(moving, fixed.shape,True,0)
-                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=self.segmenttransform)
-                        ants.image_write(normalized, mask)
+                        normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=self.segmenttransform)      
+                        i=0
+                        ants.image_write(normalized, os.path.join(self.segoutpath, 'mask_pve_'+str(i)+'.nii.gz'))
+                        i=i+1
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
         
