@@ -29,6 +29,7 @@ from argparse import ArgumentParser
 from nilearn import plotting
 from nilearn.image.image import mean_img
 import matplotlib as plt
+import shutil
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
@@ -338,6 +339,7 @@ class RestPipe:
         self.sliceorder = options.sliceorder
         self.throwaway = options.throwaway
         self.sst1=None
+        self.oldnii = self.thisnii
         self.scrubop = 'or'
         self.dvarsthreshold = None
         self.dvarsnumneighbors = 0
@@ -641,9 +643,10 @@ class RestPipe:
             newfile = os.path.join(self.outpath,newprefix)
             runproc(str("bxhselect --overwrite --timeselect " + str(self.throwaway) + ": " + self.thisnii + " " + newfile))
             if self.tdim < self.throwaway*10:
-                print('WARNING: You are disregardign over 10% of your timepoints. Please verify that is correct')
+                print('WARNING: You are disregardign over 10% of your timepoints. Please verify that is correct.')
             self.tdim = self.tdim - self.throwaway
             if os.path.isfile(newfile + ".nii.gz"):
+                self.oldnii = self.thisnii
                 self.thisnii = newfile + ".nii.gz"
                 self.prevprefix = self.prefix
                 self.prefix = newprefix
@@ -679,6 +682,7 @@ class RestPipe:
         if os.path.isfile(newfile + ".nii.gz") and os.path.isfile(newfile + ".par"):
             if self.prevprefix is not None:
                 self.toclean.append( self.thisnii )
+            self.oldnii = self.thisnii
             self.thisnii = newfile + ".nii.gz"
             self.prevprefix = self.prefix
             self.prefix = newprefix
@@ -733,6 +737,7 @@ class RestPipe:
             if self.prevprefix is not None:
                 self.toclean.append( self.thisnii )
             self.toclean.append( os.path.join(self.outpath,'mean_func.nii.gz') )
+            self.oldnii = self.thisnii
             self.thisnii = newfile + ".nii.gz"
             self.prevprefix = self.prefix
             self.prefix = newprefix
@@ -775,7 +780,6 @@ class RestPipe:
             else:
                 logging.info('Skull stripping anatomical failed.')
                 raise SystemExit()
-       
         
 
     #normalize the data
@@ -798,7 +802,8 @@ class RestPipe:
                 
                 self.t1normalized=os.path.join(self.regoutpath,'t1normalized'+'.nii.gz')
                 self.boldcoregistered=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
-                
+                self.toclean.append( self.t1normalized ) 
+                self.toclean.append( self.boldcoregistered ) 
                 if self.t1nii is not None:
                     self.sst1=self.t1nii #save for later image creation
                     #func to T1 rigid registration
@@ -878,8 +883,9 @@ class RestPipe:
             elif self.space == 'T1':
                 
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
-                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
+                self.toclean.append( self.templatenormalized )               
                 self.boldcoregistered=out_file
+                self.subjcorrlabel=os.path.join(self.outpath,'labelsinT1space'+'.nii.gz')
                 self.sst1=self.t1nii #save for later image creation
                 
                 #func to T1 rigid registration
@@ -936,7 +942,10 @@ class RestPipe:
                 self.t1coregistered=os.path.join(self.regoutpath,'t1coregistered'+'.nii.gz')
                 self.templateont1=os.path.join(self.regoutpath,'templateont1'+'.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized'+'.nii.gz')
-                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace'+'.nii.gz')
+                self.subjcorrlabel=os.path.join(self.outpath,'labelsinBOLDspace'+'.nii.gz')
+                self.toclean.append( self.t1coregistered )
+                self.toclean.append( self.templateont1 )
+                self.toclean.append( self.templatenormalized )
                 
                 #update bold despite no transfomation
                 oldnii=ants.image_read(self.thisnii)
@@ -1045,6 +1054,9 @@ class RestPipe:
                     self.t1normalized=os.path.join(self.regoutpath,'t1normalized')
                     self.t1normalizedbrain=os.path.join(self.regoutpath,'t1normalized_brain'+'.nii.gz')
                     self.boldcoregistered=os.path.join(self.regoutpath,'boldcoregistered')
+                    self.toclean.append(self.t1normalized)
+                    self.toclean.append(self.t1normalizedbrain)
+                    self.toclean.append(self.bolcoregistered)
                     #grab skull on t1 for fnirt
                     if '3' not in self.steps:
                         self.unsst1=self.t1nii
@@ -1145,8 +1157,9 @@ class RestPipe:
             elif self.space == 'T1':
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
                 self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain'+'.nii.gz')
-                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinT1space'+'.nii.gz')
-                          
+                self.subjcorrlabel=os.path.join(self.outpath,'labelsinT1space'+'.nii.gz')
+                self.toclean.append(self.templatenormalized)
+                self.toclean.append(self.templatenormalizedbrain)
                 #grab skull on t1 for fnirt
                 if '3' not in self.steps:
                     self.unsst1=self.t1nii
@@ -1241,9 +1254,9 @@ class RestPipe:
                 
                 
             elif self.space == 'BOLD':
-                self.subjcorrlabel=os.path.join(self.regoutpath,'labelsinBOLDspace.nii.gz')
+                self.subjcorrlabel=os.path.join(self.outpath,'labelsinBOLDspace.nii.gz')
                 self.templatenormalized=os.path.join(self.regoutpath,'templatenormalized')
-                
+                self.toclean.append(self.templatenormalized)
                 #update bold despite no transformation
                 oldnii=nibabel.load(self.thisnii)
                 nibabel.save(oldnii, out_file)
@@ -1428,7 +1441,7 @@ class RestPipe:
         
         if self.sst1 is None and self.t1nii is not None:
             self.sst1 = self.t1nii
-        
+            
         if self.sst1 is not None:
             import ants
             self.sst1_2mm=os.path.join(self.segoutpath, 't1_2mm.nii.gz')
@@ -1504,7 +1517,7 @@ class RestPipe:
                         i=i+1
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
-        
+            
         
     #regress out nuissance variables
     def step6(self):
@@ -1784,8 +1797,11 @@ class RestPipe:
     #make the cleanup step
     def cleanup(self):
         for fname in self.toclean:
-            logging.info('deleting :' + fname )
-            os.remove(fname)
+            if os.path.isfile(fname):
+                logging.info('deleting :' + fname )
+                os.remove(fname)
+        if os.path.isdir(self.segoutpath):
+            shutil.rmtree(self.segoutpath)
 
     # given a sequence of unit quaternions, each of the form (qs,
     # [qv1, qv2, qv3]), compute their quaternion multiplication.
