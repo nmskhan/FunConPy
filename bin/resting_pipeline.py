@@ -112,7 +112,7 @@ parser.add_argument("--scrubkeepminvols",  action="store", type=int, dest="scrub
 parser.add_argument("--fcdmthresh",  action="store", type=float, dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step11 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
 parser.add_argument("--space",  action="store",type=str, choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="choice of space", default='Template')
 parser.add_argument("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
-parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion'], nargs='*', help="List nuissance regressors separated by space. Default is motion, wm amd csf", metavar="REGRESSORS", default=['motion', 'wm', 'csf'])
+parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion'], nargs='*', help="List nuissance regressors separated by space. Default is motion, wm amd csf", metavar="regressors", default=['motion', 'wm', 'csf'])
 
 options = parser.parse_args()
 
@@ -339,6 +339,7 @@ class RestPipe:
         self.sliceorder = options.sliceorder
         self.throwaway = options.throwaway
         self.sst1=None
+        self.dofleft=None
         self.oldnii = self.thisnii
         self.scrubop = 'or'
         self.dvarsthreshold = None
@@ -413,10 +414,9 @@ class RestPipe:
             self.regoutpath = os.path.join(self.outpath, 'NormalizationFiles',)
             if not (os.path.exists(self.regoutpath)):
                 os.mkdir( self.regoutpath)
-        if '5' in self.steps:
-            self.segoutpath = os.path.join(self.outpath, 'SegmentationFiles')    
-            if not os.path.isdir(self.segoutpath):
-                os.makedirs(self.segoutpath)
+        self.segoutpath = os.path.join(self.outpath, 'SegmentationFiles')    
+        if not os.path.isdir(self.segoutpath) and'5' in self.steps:
+            os.makedirs(self.segoutpath)
        
         #place to put temp stuff
         if ( os.getenv('TMPDIR') ):
@@ -550,7 +550,7 @@ class RestPipe:
         if self.gmmask is None and '5' not in self.steps and '11' in self.steps:
             logging.info('Please provide a gray matter mask or run segmentation.')
             raise SystemExit()
-        if ((self.wmmask or self.csfmask) is None) and ('5' not in self. steps) and (('wm' or 'csf') in self.regressors):
+        if ((self.wmmask or self.csfmask) is None) and ('5' not in self. steps) and (('wm' or 'csf') in self.regressors) and '6' in self.steps:
             logging.info('Please run segmentation or provide WM and CSF masks in the ANALYSIS SPACE for regression.')
             raise SystemExit()        
         if ((self.wmmask or self.csfmask or self.gmmask) is not None) and ('5' in self. steps):
@@ -1214,18 +1214,18 @@ class RestPipe:
                 if os.path.isfile(self.templatenormalized + '.nii.gz'):
                     self.t1nii = self.sst1
                     self.templatenormalized=self.templatenormalized+'.nii.gz'
-                    if options.skullstrip == 'afni':
-                        logging.info('Skull stripping normalized template using AFNI.')
-                        t1strip = afni.SkullStrip(in_file=self.templatenormalized, out_file=self.templatenormalizedbrain, terminal_output='none', args=self.shrinkfac)
-                        t1strip.run()
-                    elif options.skullstrip == 'bet':
-                        logging.info('Skull stripping normalized template using BET.')
-                        runproc(str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval)))
+                    self.refbrainmasknorm = os.path.join(self.regoutpath, 'templatebrainmasknormalized.nii.gz')
+                    self.toclean.append(self.refbrainmasknorm)
+                    #apply the transform
+                    logging.info('creating normalized mask %s' % (self.regbrainmasknorm))
+                    runproc(str("applywarp --ref=" + self.sst1 + " --in=" + self.refbrainmask + " --out=" + self.refbrainmasknorm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz')))      
+                    logging.info('Applying brain mask to normalized template.')
+                    t1strip = afni.Calc(in_file_a=self.templatenormalized, in_file_b=str(self.refbrainmasknorm + '.nii.gz'), expr='a*step(b)', out_file = self.templatenormalizedbrain, terminal_output='none' )
+                    t1strip.run()          
   
                 else:
                     logging.info('t1 normalization failed.')
                     raise SystemExit()
-
                 
                 #make images to check normalization
                 self.boldcoregistered = newfile + '.nii.gz'
@@ -1266,6 +1266,8 @@ class RestPipe:
                     self.templateont1=os.path.join(self.regoutpath,'templateont1')
                     self.templateont1brain=os.path.join(self.regoutpath,'templateont1_brain.nii.gz')
                     self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain.nii.gz')
+                    self.toclean.append(self.templateont1brain)
+                    self.toclean.append(self.templatenormalizedbrain)
                     #grab skull on t1 for fnirt
                     if '3' not in self.steps:
                         self.unsst1=self.t1nii
@@ -1321,21 +1323,19 @@ class RestPipe:
                     self.segmenttransform=self.t1coregistered + '.mat'
                     
                     #skull strip normalized template for visualization purposes
-                    self.templatenormalized=self.templatenormalized + '.nii.gz'
-                    self.templateont1=self.templateont1 + '.nii.gz'
                     if os.path.isfile(self.templatenormalized) and os.path.isfile(self.templateont1):
                         self.t1nii = self.sst1
-                        if options.skullstrip == 'afni':
-                            logging.info('Skull stripping coregistered + normalized template using AFNI.')
-                            t1strip = afni.SkullStrip(in_file=self.templatenormalized, out_file=self.templatenormalizedbrain, terminal_output='none', args=self.shrinkfac)
-                            t1strip.run()
-                            t1strip = afni.SkullStrip(in_file=self.templateont1, out_file=self.templateont1brain, terminal_output='none', args=self.shrinkfac)
-                            t1strip.run()
-                        elif options.skullstrip == 'bet':
-                            logging.info('Skull stripping coregistered + normalized template using BET.')
-                            runproc(str("bet " + self.templatenormalized + " " + self.templatenormalizedbrain + " -f " + str(self.anatfval)))
-                            runproc(str("bet " + self.templateont1 + " " + self.templateont1brain + " -f " + str(self.anatfval)))
-          
+                        self.templatenormalized=self.templatenormalized + '.nii.gz'
+                        self.templateont1=self.templateont1 + '.nii.gz'
+                        self.toclean.append(self.templateont1)
+                        self.refbrainmasknorm = os.path.join(self.regoutpath, 'templatebrainmasknormalized.nii.gz')
+                        self.toclean.append(self.refbrainmasknorm)
+                        #apply the transform
+                        logging.info('creating normalized mask %s' % (self.refbrainmasknorm))
+                        runproc(str("applywarp --ref=" + self.thisnii + " --in=" + self.refbrainmask + " --out=" + self.refbrainmasknorm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat'))      
+                        logging.info('Applying brain mask to normalized template.')
+                        t1strip = afni.Calc(in_file_a=self.templatenormalized, in_file_b=str(self.refbrainmasknorm + '.nii.gz'), expr='a*step(b)', out_file = self.templatenormalizedbrain, terminal_output='none' )
+                        t1strip.run() 
                     else:
                         logging.info('t1 normalization failed.')
                         raise SystemExit()   
@@ -1343,6 +1343,7 @@ class RestPipe:
                     #make images to check normalization
                     self.meanbold =  mean_img(self.thisnii)
                     self.t1coregistered= self.t1coregistered + '.nii.gz'
+                    self.toclean.append(self.t1coregistered)
                     #t1 on bold
                     display = plotting.plot_img(self.t1coregistered, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.4)
@@ -1580,7 +1581,13 @@ class RestPipe:
         newprefix = self.prefix + 'r'
         newfile = os.path.join(self.outpath, (newprefix + ".nii.gz"))
         runproc(str("fsl_glm -i " + self.thisnii + " -d " + self.regressparamsmat + " --out_res=" + newfile))
+        
+        if self.dofleft == None:
+            self.dofleft=int(self.tdim)
+        self.dofused = regressors_ts.shape[1]
+        self.dofleft = self.dofleft - self.dofused
 
+        
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
                 self.toclean.append(self.thisnii)
@@ -1588,6 +1595,7 @@ class RestPipe:
             self.prefix = newprefix
             self.thisnii = newfile
             logging.info('Regression successful: ' + self.thisnii )
+            logging.info('Used %d degrees of freedom. %d dof lef out of %d.' % (self.dofused, self.dofleft, self.tdim))
         else:
             logging.info('Regression failed')
             raise SystemExit()
@@ -1601,6 +1609,11 @@ class RestPipe:
         detrender = afni.Detrend(in_file=self.thisnii, out_file=newfile, terminal_output='none', args=self.polort)
         detrender.run()
 
+        if self.dofleft == None:
+            self.dofleft=int(self.tdim)
+        self.dofused = self.detrend + 1
+        self.dofleft = self.dofleft - self.dofused
+
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
                 self.toclean.append(self.thisnii)
@@ -1609,6 +1622,7 @@ class RestPipe:
             self.prefix = newprefix
             self.thisnii = newfile
             logging.info('Detrending successful: ' + self.thisnii )
+            logging.info('Used %d degrees of freedom. %d dof lef out of %d.' % (self.dofused, self.dofleft, self.tdim))
 		
         else:
             logging.info('Detrending failed')
@@ -1624,6 +1638,12 @@ class RestPipe:
 
         bandpass = afni.Bandpass(in_file=self.thisnii, highpass=hpfreq, lowpass=lpfreq, despike=False, no_detrend=True, notrans=True, tr=self.tr_ms/1000, out_file=newfile, terminal_output='none', args=str("-mask " + self.thisnii))
         bandpass.run()
+        
+        if self.dofleft == None:
+            self.dofleft= self.tdim
+        self.dofused = (self.tdim * self.tr_ms/1000) * (self.lpfreq - self.hpfreq)
+        self.dofleft = self.dofleft - self.dofused
+
 
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
@@ -1632,6 +1652,7 @@ class RestPipe:
             self.prefix = newprefix
             self.thisnii = newfile
             logging.info('bandpass filtering successful: ' + self.thisnii )
+            logging.info('Used %d degrees of freedom. %d dof lef out of %d.' % (self.dofused, self.dofleft, self.tdim))
 		
         else:
             logging.info('bandpass filtering failed')
@@ -1672,7 +1693,7 @@ class RestPipe:
 
         runproc(str("fslmeants -i " + self.thisnii + " --label=" + self.corrlabel + " -o " + corrtxt ))
         if not os.path.isfile(corrtxt):
-            logging.info('could not create mean timeseries matrix file')
+            logging.info('coudld not create mean timeseries matrix file')
             raise SystemExit()
            
        
@@ -1735,16 +1756,18 @@ class RestPipe:
             
             G=nx.Graph(atlas=str(self.corrlabel))
             for lab in labels:
-                #grab indices equal to label value
-                x,y,z = (niidata == lab[0]).nonzero()
-                centroid = np.array([int(x.mean()),int(y.mean()),int(z.mean())])
-                c_cent_str = str((centroid - aalcenter)*(zooms.astype('int')))[1:-1].strip()
-                lab.append( (centroid - aalcenter)*zooms.astype('int') )
-                lab.append( 0 )
-                G.add_node(lab[0],label=str(lab[1]),centroid=c_cent_str,intensityvalue=lab[0] )
-                timecourse = timeseries[int(lab[0] - 1)]
-                G.node[lab[0]]['timecourse'] = str(timecourse.tolist()).replace(',','').strip('\[\]')
-
+                try:
+                    #grab indices equal to label value
+                    x,y,z = (niidata == lab[0]).nonzero()
+                    centroid = np.array([int(x.mean()),int(y.mean()),int(z.mean())])
+                    c_cent_str = str((centroid - aalcenter)*(zooms.astype('int')))[1:-1].strip()
+                    lab.append( (centroid - aalcenter)*zooms.astype('int') )
+                    lab.append( 0 )
+                    G.add_node(lab[0],label=str(lab[1]),centroid=c_cent_str,intensityvalue=lab[0] )
+                    timecourse = timeseries[int(lab[0] - 1)]
+                    G.node[lab[0]]['timecourse'] = str(timecourse.tolist()).replace(',','').strip('\[\]')
+                except:
+                    pass
 
             sigx,sigy = (zrmaps != 0 ).nonzero()            
             for idx in range(len(sigx)):
