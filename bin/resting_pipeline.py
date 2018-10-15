@@ -30,6 +30,7 @@ from nilearn import plotting
 from nilearn.image.image import mean_img
 import matplotlib as plt
 import shutil
+import ants
 
 logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
@@ -176,6 +177,14 @@ class RestPipe:
         if len(self.steps) == 1 and '10b' in self.steps:
             self.needfunc = False
 
+        #make output directory
+        if (options.outpath == 'PWD'):
+            self.outpath = os.environ['PWD']
+        else:
+            self.outpath = str(options.outpath)
+            if not ( os.path.exists(self.outpath) ):
+                os.mkdir( self.outpath )
+                
         #check bxh if provided
         self.origbxh = None
         self.thisnii = None
@@ -196,7 +205,6 @@ class RestPipe:
                     self.t1bxh = self.t1nii.split('.')[0] + '.nii.gz'
                 elif os.path.isfile(self.t1nii.split('.')[0] + '.nii'):
                     self.t1bxh = self.t1nii.split('.')[0] + '.nii'
-    
 
         if options.prefix is not None:
             self.prefix = str(options.prefix)
@@ -400,14 +408,6 @@ class RestPipe:
         self.tdim = None
         #self.thisnii = None
         self.prevprefix = None
-
-        #make output directory
-        if (options.outpath == 'PWD'):
-            self.outpath = os.environ['PWD']
-        else:
-            self.outpath = str(options.outpath)
-            if not ( os.path.exists(self.outpath) ):
-                os.mkdir( self.outpath )
                 
         #make normalization outpath
         if '3' or '4' in self.steps:      
@@ -524,7 +524,6 @@ class RestPipe:
             else:
                 logging.info("slice order not found. please use --sliceorder option")
                 raise SystemExit()
-                   
             
         #PRE FLIGHT CHECK    
         #make sure motion regression is possible     
@@ -789,8 +788,7 @@ class RestPipe:
         newfile = os.path.join(self.outpath, newprefix)           
         out_file = newfile + '.nii.gz'
 	#ANTs
-        if self.regmethod == 'ants':          
-            import ants
+        if self.regmethod == 'ants':
             self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
             if os.path.isfile(self.meanfuncbrain) == False:
                     #first create mean_func
@@ -1056,7 +1054,7 @@ class RestPipe:
                     self.boldcoregistered=os.path.join(self.regoutpath,'boldcoregistered')
                     self.toclean.append(self.t1normalized)
                     self.toclean.append(self.t1normalizedbrain)
-                    self.toclean.append(self.bolcoregistered)
+                    self.toclean.append(self.boldcoregistered)
                     #grab skull on t1 for fnirt
                     if '3' not in self.steps:
                         self.unsst1=self.t1nii
@@ -1444,7 +1442,6 @@ class RestPipe:
             self.sst1 = self.t1nii
             
         if self.sst1 is not None:
-            import ants
             self.sst1_2mm=os.path.join(self.segoutpath, 't1_2mm.nii.gz')
             fixed = ants.image_read(self.sstemplate)
             moving = ants.image_read(self.sst1)
@@ -1458,7 +1455,6 @@ class RestPipe:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.') 
                     if self.regmethod == 'ants':
-                        import ants
                         self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
                         if os.path.isfile(self.meanfuncbrain) == False:
                             #first create mean_func
@@ -1481,7 +1477,6 @@ class RestPipe:
                 if self.space == 'Template':
                     logging.info('Converting segmentation to Template space.')
                     if self.regmethod == 'ants':
-                        import ants
                         fixed = ants.image_read(self.sstemplate)
                         moving = ants.image_read(mask)
                         moving = ants.resample_image(moving,fixed.shape,True,0)
@@ -1503,7 +1498,6 @@ class RestPipe:
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.')
                     if self.regmethod == 'ants':
-                        import ants
                         if os.path.isfile(self.meanfuncbrain) == False:
                             #first create mean_func
                             logging.info('Mean fuctional not found, creating mean funcional.')
@@ -2134,5 +2128,6 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
+
 
 
