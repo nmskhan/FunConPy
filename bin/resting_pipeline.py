@@ -91,6 +91,7 @@ parser.add_argument("--fwhm",  action="store", type=int, dest="fwhm",help="FWHM 
 parser.add_argument("--refacpoint",  action="store", type=str, dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
 parser.add_argument("--flirtcost",  action="store", type=str, choices=['mutualinfo', 'corrratio', 'normmi', 'bbr'], dest="flirtcost",help="Cost function for flirt registration of BOLD images. Default is 'corratio'.", metavar="cost function", default='corratio')
 parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data. Default is 'bet'.", metavar="bet/afni", default='bet')
+parser.add_argument("--resample-t1",  action="store",type=str, choices=['yes', 'no'], dest="resamplet1",help="Indicates whether to resample T1 to template resolution before registration. This reduces time and memory need considerably. Default is 'yes'.", metavar="yes/no", default='yes')
 parser.add_argument("--fval",  action="store", type=float, choices=range(0,1), dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
 parser.add_argument("--anatfval",  action="store", type=float, choices=range(0,1), dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
 parser.add_argument("--regmethod",  action="store",type=str, choices=['ants', 'fsl'], dest="regmethod",help="Register and normalize images using 'ants' or 'fsl'. Default is 'fsl'.", metavar="ants/fsl", default='fsl')
@@ -350,6 +351,7 @@ class RestPipe:
         self.dofleft=None
         self.oldnii = self.thisnii
         self.scrubop = 'or'
+        self.resamplet1 == options.resamplet1
         self.dvarsthreshold = None
         self.dvarsnumneighbors = 0
         self.fdthreshold = None
@@ -769,18 +771,45 @@ class RestPipe:
             if os.path.isfile( newfile + ".nii.gz" ):
                 self.unsst1=self.t1nii
                 self.t1nii = newfile + ".nii.gz"
-                self.sst1 = self.t1nii
+                self.maskbinaryfilepath = self.maskbinaryfile + ".nii.gz"
                 logging.info('Skull stripping completed: ' + self.t1nii )
                 
                 #pictures to check t1 skull strip
                 display = plotting.plot_img(self.unsst1, cmap=plt.cm.Greens, cut_coords=(0,0,0))
-                display.add_overlay(self.sst1, cmap=plt.cm.Reds, alpha=0.4)
+                display.add_overlay(self.t1nii, cmap=plt.cm.Reds, alpha=0.4)
                 display.savefig(os.path.join(self.regoutpath, 'SS_T1.png'))
             else:
                 logging.info('Skull stripping anatomical failed.')
                 raise SystemExit()
-        
-
+       
+            if self.resamplet1 == 'yes':
+                #resample skull stripped
+                self.sst1_resampled= newfile + "_resampled.nii.gz"
+                fixed = ants.image_read(self.sstemplate)
+                moving = ants.image_read(self.sst1)
+                moving = ants.resample_image(moving,fixed.shape,True,0)
+                ants.image_write(moving, self.sst1_resampled)
+                self.t1nii = self.sst1_resampled
+                
+                #resample non skull stripped
+                unsst1prefix = self.unsst1.split('/')[-1].split('.')[0] + "_resampled.nii.gz"
+                self.unsst1_resampled = os.path.join(self.outpath, unsst1prefix)
+                fixed = ants.image_read(self.sstemplate)
+                moving = ants.image_read(self.unsst1)
+                moving = ants.resample_image(moving,fixed.shape,True,0)
+                ants.image_write(moving, self.unsst1_resampled)
+                self.unsst1 = self.unsst1_resampled
+                          
+                #resample binary mask
+                self.maskbinaryfile_resampled=self.maskbinaryfile + "_resampled"
+                self.maskbinaryfilepath_resampled=self.maskbinaryfile + "_resampled.nii.gz"
+                fixed = ants.image_read(self.sstemplate)
+                moving = ants.image_read(self.maskbinaryfilepath)
+                moving = ants.resample_image(moving,fixed.shape,True,0)
+                ants.image_write(moving, self.maskbinaryfilepath_resampled)
+                self.maskbinaryfile = self.maskbinaryfile_resampled
+                self.maskbinaryfilepath = self.maskbinaryfilepath_resampled
+                
     #normalize the data
     def step4(self):
         logging.info('Normalizing data.')
@@ -796,8 +825,7 @@ class RestPipe:
                     runproc(str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func_brain')))
                     self.meanfuncbrain=os.path.join(self.outpath,'mean_func_brain.nii.gz')
                     
-            if self.space == 'Template':
-                
+            if self.space == 'Template':             
                 self.t1normalized=os.path.join(self.regoutpath,'t1normalized'+'.nii.gz')
                 self.boldcoregistered=os.path.join(self.regoutpath,'boldcoregistered'+'.nii.gz')
                 self.toclean.append( self.t1normalized ) 
@@ -1055,27 +1083,7 @@ class RestPipe:
                     self.toclean.append(self.t1normalized)
                     self.toclean.append(self.t1normalizedbrain)
                     self.toclean.append(self.boldcoregistered)
-                    #grab skull on t1 for fnirt
-                    if '3' not in self.steps:
-                        self.unsst1=self.t1nii
-                        self.sst1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
-                        self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
-                        self.maskfile = os.path.join(self.outpath, self.maskprefix)
-                        self.maskbinaryfile = self.maskfile + "_binary"
-                        if options.skullstrip == 'afni':
-                            logging.info('Skull stripping T1 using AFNI for FLIRT.')
-                            t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
-                            t1mask.run()
-                            t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.sst1, terminal_output='none' )
-                            t1strip.run()
-                            t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
-                            t1maskbinary.run()
-                        elif options.skullstrip == 'bet':
-                            logging.info('Skull stripping T1 using BET for FLIRT.')
-                            runproc(str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m"))
-                            self.maskbinaryfile=newfile + "_mask"
-                    else:
-                        self.sst1=self.t1nii 
+                    self.sst1=self.t1nii
                         
                     #use t1 to generate flirt paramters
                     #first flirt the func to the t1
@@ -1158,27 +1166,7 @@ class RestPipe:
                 self.subjcorrlabel=os.path.join(self.outpath,'labelsinT1space'+'.nii.gz')
                 self.toclean.append(self.templatenormalized)
                 self.toclean.append(self.templatenormalizedbrain)
-                #grab skull on t1 for fnirt
-                if '3' not in self.steps:
-                    self.unsst1=self.t1nii
-                    self.sst1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
-                    self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
-                    self.maskfile = os.path.join(self.outpath, self.maskprefix)
-                    self.maskbinaryfile = self.maskfile + "_binary"
-                    if options.skullstrip == 'afni':
-                        logging.info('Skull stripping T1 using AFNI for FLIRT.')
-                        t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
-                        t1mask.run()
-                        t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.sst1, terminal_output='none' )
-                        t1strip.run()
-                        t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
-                        t1maskbinary.run()
-                    elif options.skullstrip == 'bet':
-                        logging.info('Skull stripping T1 using BET for FLIRT.')
-                        runproc(str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m"))
-                        self.maskbinaryfile=newfile + "_mask"
-                else:
-                    self.sst1=self.t1nii 
+                self.sst1=self.t1nii
                     
                 #use t1 to generate flirt paramters
                 #first flirt the func to the t1
@@ -1200,7 +1188,6 @@ class RestPipe:
 
                 #fnirt the standard to t1
                 logging.info('fnirt standard to t1')
-                self.maskbinaryfilepath = self.maskbinaryfile + '.nii.gz'
                 runproc(str("fnirt --ref=" + self.unsst1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.template + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templatenormalized + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef')))
                 
                 #apply the transform
@@ -1266,27 +1253,7 @@ class RestPipe:
                     self.templatenormalizedbrain=os.path.join(self.regoutpath,'templatenormalized_brain.nii.gz')
                     self.toclean.append(self.templateont1brain)
                     self.toclean.append(self.templatenormalizedbrain)
-                    #grab skull on t1 for fnirt
-                    if '3' not in self.steps:
-                        self.unsst1=self.t1nii
-                        self.sst1=os.path.join(self.regoutpath,'skullstrippedt1'+'.nii.gz')
-                        self.maskprefix = self.t1nii.split('/')[-1].split('.')[0] + "_brain" + "_mask"
-                        self.maskfile = os.path.join(self.outpath, self.maskprefix)
-                        self.maskbinaryfile = self.maskfile + "_binary"
-                        if options.skullstrip == 'afni':
-                            logging.info('Skull stripping T1 using AFNI for FLIRT.')
-                            t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
-                            t1mask.run()
-                            t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'), expr='a*step(b)', out_file = self.sst1, terminal_output='none' )
-                            t1strip.run()
-                            t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
-                            t1maskbinary.run()   
-                        elif options.skullstrip == 'bet':
-                            logging.info('Skull stripping T1 using BET for FLIRT.')
-                            runproc(str("bet " + self.t1nii + " " + self.sst1 + " -f " + str(self.anatfval) + " -m"))
-                            self.maskbinaryfile=newfile + "_mask"
-                    else:
-                        self.sst1=self.t1nii 
+                    self.sst1=self.t1nii
                 
                     #use t1 to generate flirt paramters
                     #first flirt the t1 to func
@@ -1305,7 +1272,6 @@ class RestPipe:
         
                     #fnirt the standard to t1
                     logging.info('fnirt standard to t1')
-                    self.maskbinaryfilepath = self.maskbinaryfile + '.nii.gz'
                     runproc(str("fnirt --ref=" + self.unsst1 + " --refmask=" + self.maskbinaryfilepath + " --in=" + self.template + " --aff=" + os.path.join(self.regoutpath,'standard2t1_aff.mat') + " --config=" + self.fnirtconfig + " --iout=" + self.templateont1 + " --cout=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef')))
                 
                     #apply the transform
@@ -1442,14 +1408,18 @@ class RestPipe:
             self.sst1 = self.t1nii
             
         if self.sst1 is not None:
-            self.sst1_2mm=os.path.join(self.segoutpath, 't1_2mm.nii.gz')
-            fixed = ants.image_read(self.sstemplate)
-            moving = ants.image_read(self.sst1)
-            moving = ants.resample_image(moving,fixed.shape,True,0)
-            ants.image_write(moving, self.sst1_2mm)
-            
-            logging.info('Running segmentation on T1 image.')
-            runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_2mm))
+            if self.resamplet1 == 'yes':
+                self.sst1_resampled=os.path.join(self.outpath, 't1_resampled.nii.gz')
+                if not os.path.join(self.sst1_resampled):
+                    fixed = ants.image_read(self.sstemplate)
+                    moving = ants.image_read(self.sst1)
+                    moving = ants.resample_image(moving,fixed.shape,True,0)
+                    ants.image_write(moving, self.sst1_resampled) 
+                logging.info('Running segmentation on resampled T1 image.')
+                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_resampled))
+            elif self.resamplet1 == 'no':
+                logging.info('Running segmentation on original T1 image.')
+                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1))       
             
             for mask in self.masks:
                 if self.space == 'BOLD': 
@@ -2128,6 +2098,3 @@ class RestPipe:
 if __name__ == "__main__":
     pipeline = RestPipe()
 #    pipeline.mainloop()
-
-
-
