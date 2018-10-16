@@ -351,7 +351,7 @@ class RestPipe:
         self.dofleft=None
         self.oldnii = self.thisnii
         self.scrubop = 'or'
-        self.resamplet1 == options.resamplet1
+        self.resamplet1 = options.resamplet1
         self.dvarsthreshold = None
         self.dvarsnumneighbors = 0
         self.fdthreshold = None
