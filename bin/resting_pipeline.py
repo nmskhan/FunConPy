@@ -78,8 +78,8 @@ parser.add_argument("-s", "--steps",  action="store", type=str, dest="steps",hel
 parser.add_argument("-o","--outpath",  action="store",type=str, dest="outpath",help="Location to store output files.", metavar="PATH", default='PWD')
 parser.add_argument("--sliceorder",  action="store",type=str, choices=['odd', 'up', 'even', 'down'], dest="sliceorder",help="sliceorder if slicetime correction ( odd=interleaved (1,3,5,2,4,6), up=ascending, down=descending, even=interleaved (2,4,6,1,3,5) ).  Default is to read this from input image, if available.", metavar="string")
 parser.add_argument("--tr",  action="store", type=float, dest="tr_ms",help="TR of functional data in msec.", metavar="MSEC")
-parser.add_argument("--ssref",  action="store", type=afile, dest="sstemplate",help="Pointer to skullstripped template reference image if not using standard brain.", metavar="FILE")
-parser.add_argument("--ref",  action="store", type=afile, dest="template",help="Pointer to skullon template reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--ssref",  action="store", type=afile, dest="sstemplate",help="Pointer to skull stripped template reference image if not using standard brain.", metavar="FILE")
+parser.add_argument("--ref",  action="store", type=afile, dest="template",help="Pointer to skull on template reference image if not using standard brain.", metavar="FILE")
 parser.add_argument("--gmmask",  action="store", type=afile, dest="gmmask",help="Pointer to GM mask of reference image if not using standard brain.", metavar="FILE")
 parser.add_argument("--wmmask",  action="store", type=afile, dest="csfmask",help="Pointer to WM mask of reference image if not using standard brain.", metavar="FILE")
 parser.add_argument("--csfmask",  action="store", type=afile, dest="wmmask",help="Pointer to CSF mask of reference image if not using standard brain.", metavar="FILE")
@@ -349,6 +349,8 @@ class RestPipe:
         self.sliceorder = options.sliceorder
         self.throwaway = options.throwaway
         self.sst1=None
+        self.unsst1=None
+        self.maskbinaryfilepath=None
         self.dofleft=None
         self.oldnii = self.thisnii
         self.scrubop = 'or'
@@ -558,7 +560,8 @@ class RestPipe:
         if ((self.wmmask or self.csfmask or self.gmmask) is not None) and ('5' in self. steps):
             logging.info('The tissue masks provided will not be used, as segmentation is being performed.')    
         if '3' not in self.steps and '4' in self.steps and self.t1nii is not None and self.regmethod == 'fsl':
-            logging.info(' FNIRT requires T1 with skull. Please make sure T1 has skull and BOLD does not.') 
+            logging.info('Invalid settings. Step 3 required.')
+            raise SystemExit()
         
         #check segment transform is available
         if '5' in self.steps and '4' not in self.steps and self.segmenttransform is None:
@@ -780,28 +783,6 @@ class RestPipe:
             else:
                 logging.info('Skull stripping anatomical failed.')
                 raise SystemExit()
-       
-            if self.resamplet1 == 'yes':
-                #resample skull stripped
-                self.sst1_resampled= newfile + "_resampled.nii.gz"
-                resampled_img = image.resampled_to_img(self.t1nii, self.sstemplate)
-                resampled_img.to_filename(self.sst1_resampled)
-                self.t1nii = self.sst1_resampled
-                
-                #resample non skull stripped
-                unsst1prefix = self.unsst1.split('/')[-1].split('.')[0] + "_resampled.nii.gz"
-                self.unsst1_resampled = os.path.join(self.outpath, unsst1prefix)
-                resampled_img = image.resampled_to_img(self.unsst1, self.sstemplate)
-                resampled_img.to_filename(self.unsst1_resampled)
-                self.unsst1 = self.unsst1_resampled
-                          
-                #resample binary mask
-                self.maskbinaryfile_resampled=self.maskbinaryfile + "_resampled"
-                self.maskbinaryfilepath_resampled=self.maskbinaryfile + "_resampled.nii.gz"
-                resampled_img = image.resampled_to_img(self.maskbinaryfilepath, self.sstemplate)
-                resampled_img.to_filename(self.maskbinaryfilepath_resampled)
-                self.maskbinaryfile = self.maskbinaryfile_resampled
-                self.maskbinaryfilepath = self.maskbinaryfilepath_resampled
                 
     #normalize the data
     def step4(self):
@@ -809,6 +790,35 @@ class RestPipe:
         newprefix = self.prefix + "_norm"
         newfile = os.path.join(self.outpath, newprefix)           
         out_file = newfile + '.nii.gz'
+        
+    #Resample T1
+        if self.t1nii is not None:
+            if self.resamplet1 == 'yes':
+                logging.info('Resempling T1.')
+                #resample skull stripped
+                t1prefix = self.t1nii.split('/')[-1].split('.')[0] + "_resampled.nii.gz"
+                self.sst1_resampled = os.path.join(self.outpath, t1prefix) 
+                resampled_img = image.resampled_to_img(self.t1nii, self.sstemplate)
+                resampled_img.to_filename(self.sst1_resampled)
+                self.t1nii = self.sst1_resampled
+                
+                if self.unsst1 is not None:
+                    #resample non skull stripped
+                    unsst1prefix = self.unsst1.split('/')[-1].split('.')[0] + "_resampled.nii.gz"
+                    self.unsst1_resampled = os.path.join(self.outpath, unsst1prefix)
+                    resampled_img = image.resampled_to_img(self.unsst1, self.sstemplate)
+                    resampled_img.to_filename(self.unsst1_resampled)
+                    self.unsst1 = self.unsst1_resampled
+                
+                if self.maskbinaryfilepath is not None:
+                    #resample binary mask
+                    self.maskbinaryfile_resampled=self.maskbinaryfile + "_resampled"
+                    self.maskbinaryfilepath_resampled=self.maskbinaryfile + "_resampled.nii.gz"
+                    resampled_img = image.resampled_to_img(self.maskbinaryfilepath, self.sstemplate)
+                    resampled_img.to_filename(self.maskbinaryfilepath_resampled)
+                    self.maskbinaryfile = self.maskbinaryfile_resampled
+                    self.maskbinaryfilepath = self.maskbinaryfilepath_resampled
+        
 	#ANTs
         if self.regmethod == 'ants':
             self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
