@@ -1418,7 +1418,7 @@ class RestPipe:
             
         if self.sst1 is not None:
             if self.resamplet1 == 'yes':
-                self.sst1_resampled is None:
+                if self.sst1_resampled is None:
                     self.sst1_resampled = os.path.join(self.outpath, 't1_resampled.nii.gz')
                 if not os.path.join(self.sst1_resampled):
                     fixed = ants.image_read(self.sstemplate)
