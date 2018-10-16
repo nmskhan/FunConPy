@@ -794,10 +794,10 @@ class RestPipe:
     #Resample T1
         if self.t1nii is not None:
             if self.resamplet1 == 'yes':
-                logging.info('Resempling T1.')
+                logging.info('Resampling T1.')
                 #resample skull stripped
                 t1prefix = self.t1nii.split('/')[-1].split('.')[0] + "_resampled.nii.gz"
-                self.sst1_resampled = os.path.join(self.outpath, t1prefix) 
+                self.sst1_resampled = os.path.join(self.outpath, t1prefix)
                 resampled_img = image.resample_to_img(self.t1nii, self.sstemplate)
                 resampled_img.to_filename(self.sst1_resampled)
                 self.t1nii = self.sst1_resampled
@@ -887,7 +887,6 @@ class RestPipe:
                     display.add_overlay(self.sstemplate, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
                     
-                    self.sst1 = self.t1normalized #for step 5
                 else:
                     #use the functional to get the matrix
                     #func to Template affine + nonlinear registration
@@ -1042,9 +1041,7 @@ class RestPipe:
                     #labels on bold
                     display = plotting.plot_img(self.corrlabel, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
-                    display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
-                    
-                    self.sst1 = self.t1coregistered #for step 5
+                    display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))                   
                     
                 else:
                     #use the functional to get the matrix
@@ -1151,8 +1148,6 @@ class RestPipe:
                     display.add_overlay(os.path.join(self.t1normalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_T1.png'))
                     
-                    self.sst1 = self.t1normalizedbrain #for step 5
-                    
                 else:
                     #use the functional to get the matrix
                     runproc(str("flirt -in " +  self.thisnii + " -ref " + self.sstemplate + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost " + self.flirtcost + " -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
@@ -1246,9 +1241,7 @@ class RestPipe:
                 #Template fnirt skull strip
                 display = plotting.plot_img(self.templatenormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                 display.add_overlay(os.path.join(self.templatenormalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
-                display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATE.png'))
-
-                
+                display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATE.png'))                
                 
             elif self.space == 'BOLD':
                 self.subjcorrlabel=os.path.join(self.outpath,'labelsinBOLDspace.nii.gz')
@@ -1343,9 +1336,7 @@ class RestPipe:
                     display = plotting.plot_img(self.templateont1, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(os.path.join(self.templateont1brain), cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATEinT1.png'))
-               
-                    self.sst1 = self.t1coregistered #for step 5
-                    
+                
                 else:
                     #use the functional to get the matrix
                     if self.flirtcost == 'bbr':
@@ -1422,10 +1413,11 @@ class RestPipe:
         if self.sst1 is not None:
             if self.resamplet1 == 'yes':
                 if self.sst1_resampled is None:
-                    self.sst1_resampled = os.path.join(self.outpath, 't1_resampled.nii.gz')
-                if not os.path.join(self.sst1_resampled):                    
-                    resampled_img = image.resample_to_img(self.sst1, self.sstemplate)
-                    resampled_img.to_filename(self.sst1_resampled)
+                    self.sst1_resampled = os.path.join(self.outpath, 't1_resampled.nii.gz')                  
+                reference= ants.image_read(self.sstemplate)
+                moving=ants.image_read(self.sst1) #this is the already resampled one from step 4
+                resampled=ants.resample_image(moving, reference.shape, True, 0)
+                ants.image_write(resampled, self.sst1_resampled)
                 logging.info('Running segmentation on resampled T1 image.')
                 runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_resampled))
             elif self.resamplet1 == 'no':
@@ -1492,8 +1484,9 @@ class RestPipe:
                         ants.image_write(normalized, os.path.join(self.segoutpath, 'mask_pve_'+str(i)+'.nii.gz'))
                         i=i+1
                     elif self.regmethod == 'fsl':
-                        runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
-            
+                        i=0
+                        runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' +  'mask_pve_' + str(i)+ '.nii.gz'))
+                        i=i+1
         
     #regress out nuissance variables
     def step6(self):
