@@ -883,7 +883,8 @@ class RestPipe:
                     display = plotting.plot_img(self.meanboldnormalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(self.sstemplate, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'BOLDtoTEMPLATE.png'))
-           
+                    
+                    self.sst1 = self.t1normalized #for step 5
                 else:
                     #use the functional to get the matrix
                     #func to Template affine + nonlinear registration
@@ -1040,6 +1041,8 @@ class RestPipe:
                     display.add_overlay(self.meanbold, cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'LABELStoBOLD.png'))
                     
+                    self.sst1 = self.t1coregistered #for step 5
+                    
                 else:
                     #use the functional to get the matrix
                     #template to bold affine + nonlinear registration
@@ -1106,16 +1109,20 @@ class RestPipe:
                     self.segmenttransform = os.path.join(self.regoutpath,'t12standard_fnirt_warpcoef.nii.gz')
                     
                     #skull strip normalized t1 for visualization purposes
+                    
+                    
                     self.t1normalized=self.t1normalized+'.nii.gz'
-                    if os.path.isfile(self.t1normalized):
+                    if os.path.isfile(self.t1normalized):                                       
+                        self.maskbinaryfilepathnorm = os.path.join(self.regoutpath, 't1maskbinarynormalized.nii.gz')
+                        self.toclean.append(self.maskbinaryfilepathnorm)
+                        logging.info('creating normalized mask %s' % (self.maskbinaryfilepathnorm))
+                        runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + self.maskbinaryfilepath + " --out=" + self.maskbinaryfilepathnorm + " --warp=" + self.segmenttransform))      
+                        logging.info('Applying brain mask to normalized template.')
                         if options.skullstrip == 'afni':
-                            logging.info('Skull stripping normalized T1 using AFNI.')
-                            t1strip = afni.SkullStrip(in_file=self.t1normalized, out_file=self.t1normalizedbrain, terminal_output='none', args=self.shrinkfac)
-                            t1strip.run()
+                            t1strip = afni.Calc(in_file_a=self.t1normalized, in_file_b=self.maskbinaryfilepathnorm, expr='a*step(b)', out_file = self.t1normalizedbrain, terminal_output='none' )
+                            t1strip.run()  
                         elif options.skullstrip == 'bet':
-                            logging.info('Skull stripping normalized T1 using BET.')
-                            runproc(str("bet " + self.t1normalized + " " + self.t1normalizedbrain + " -f " + str(self.anatfval)))
-                        self.t1nii = self.t1normalized
+                            runproc(str("fslmaths " + self.t1normalized + " -mas " + self.maskbinaryfilepathnorm + " " + self.t1normalizedbrain))   
                     else:
                         logging.info('t1 normalization failed.')
                         raise SystemExit()
@@ -1140,8 +1147,9 @@ class RestPipe:
                     display = plotting.plot_img(self.t1normalized, cmap=plt.cm.Greens, cut_coords=(0,0,0))
                     display.add_overlay(os.path.join(self.t1normalizedbrain), cmap=plt.cm.Reds, alpha=0.4)
                     display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_T1.png'))
-                    self.t1nii=self.t1normalized
-                        
+                    
+                    self.sst1 = self.t1normalizedbrain #for step 5
+                    
                 else:
                     #use the functional to get the matrix
                     runproc(str("flirt -in " +  self.thisnii + " -ref " + self.sstemplate + " -out " + newfile + " -omat " + (newfile + '.mat') + " -bins 256 -cost " + self.flirtcost + " -searchrx -90 90 -searchry -90 90 -searchrz -90 90 -dof 12 -interp trilinear"))
@@ -1197,7 +1205,6 @@ class RestPipe:
                 
                 #skull strip normalized template for visualization purposes
                 if os.path.isfile(self.templatenormalized + '.nii.gz'):
-                    self.t1nii = self.sst1
                     self.templatenormalized=self.templatenormalized+'.nii.gz'
                     self.refbrainmasknorm = os.path.join(self.regoutpath, 'templatebrainmasknormalized.nii.gz')
                     self.toclean.append(self.refbrainmasknorm)
@@ -1205,11 +1212,13 @@ class RestPipe:
                     logging.info('creating normalized mask %s' % (self.regbrainmasknorm))
                     runproc(str("applywarp --ref=" + self.sst1 + " --in=" + self.refbrainmask + " --out=" + self.refbrainmasknorm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz')))      
                     logging.info('Applying brain mask to normalized template.')
-                    t1strip = afni.Calc(in_file_a=self.templatenormalized, in_file_b=str(self.refbrainmasknorm + '.nii.gz'), expr='a*step(b)', out_file = self.templatenormalizedbrain, terminal_output='none' )
-                    t1strip.run()          
-  
+                    if options.skullstrip == 'afni':
+                        t1strip = afni.Calc(in_file_a=self.templatenormalized, in_file_b=self.refbrainmasknorm, expr='a*step(b)', out_file = self.templatenormalizedbrain, terminal_output='none' )
+                        t1strip.run()  
+                    elif options.skullstrip == 'bet':
+                        runproc(str("fslmaths " + self.templatenormalized + " -mas " + self.refbrainmasknorm + " " + self.templatenormalizedbrain))
                 else:
-                    logging.info('t1 normalization failed.')
+                    logging.info('template normalization failed.')
                     raise SystemExit()
                 
                 #make images to check normalization
@@ -1288,7 +1297,6 @@ class RestPipe:
                     
                     #skull strip normalized template for visualization purposes
                     if os.path.isfile(self.templatenormalized) and os.path.isfile(self.templateont1):
-                        self.t1nii = self.sst1
                         self.templatenormalized=self.templatenormalized + '.nii.gz'
                         self.templateont1=self.templateont1 + '.nii.gz'
                         self.toclean.append(self.templateont1)
@@ -1333,7 +1341,8 @@ class RestPipe:
                     display.add_overlay(os.path.join(self.templateont1brain), cmap=plt.cm.Reds, alpha=0.3)
                     display.savefig(os.path.join(self.regoutpath, 'SS_FNIRT_TEMPLATEinT1.png'))
                
-                
+                    self.sst1 = self.t1coregistered #for step 5
+                    
                 else:
                     #use the functional to get the matrix
                     if self.flirtcost == 'bbr':
@@ -1409,7 +1418,8 @@ class RestPipe:
             
         if self.sst1 is not None:
             if self.resamplet1 == 'yes':
-                self.sst1_resampled=os.path.join(self.outpath, 't1_resampled.nii.gz')
+                self.sst1_resampled is None:
+                    self.sst1_resampled = os.path.join(self.outpath, 't1_resampled.nii.gz')
                 if not os.path.join(self.sst1_resampled):
                     fixed = ants.image_read(self.sstemplate)
                     moving = ants.image_read(self.sst1)
