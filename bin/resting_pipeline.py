@@ -28,6 +28,7 @@ import argparse
 from argparse import ArgumentParser
 from nilearn import plotting
 from nilearn.image.image import mean_img
+from nilearn import image
 import matplotlib as plt
 import shutil
 import ants
@@ -721,10 +722,8 @@ class RestPipe:
             logging.info('Skull stripping func using BET')
             #first create mean_func
             runproc(str("fslmaths " + self.thisnii + " -Tmean " + os.path.join(self.outpath,'mean_func')))
-
             #now skull strip the mean
             runproc(str("bet " + os.path.join(self.outpath,'mean_func') + " " + os.path.join(self.outpath,'mean_func_brain') + " -f " + str(self.fval) + " -m"))
-
             #now mask full run by results
             runproc(str("fslmaths " + self.thisnii + " -mas " + os.path.join(self.outpath,'mean_func_brain_mask') + " " + newfile))
                             
@@ -759,9 +758,9 @@ class RestPipe:
                 logging.info('Skull stripping anatomical using AFNI.')
                 t1mask = afni.SkullStrip(in_file=self.t1nii, out_file=str(self.maskfile + '.nii.gz'), terminal_output='none', args = self.shrinkfac + " -mask_vol")
                 t1mask.run()
-                t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'),expr='a*step(b)', out_file = str(newfile + '.nii.gz'), terminal_output='none' )
+                t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'),expr='a*step(b)', out_file = str(newfile + '.nii.gz'), terminal_output='none')
                 t1strip.run()
-                t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none' )
+                t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.maskbinaryfile + '.nii.gz'), terminal_output='none', args = "-datum float" )
                 t1maskbinary.run()
             elif options.skullstrip == 'bet':
                 logging.info('Skull stripping anatomical using BET.')
@@ -785,28 +784,22 @@ class RestPipe:
             if self.resamplet1 == 'yes':
                 #resample skull stripped
                 self.sst1_resampled= newfile + "_resampled.nii.gz"
-                fixed = ants.image_read(self.sstemplate)
-                moving = ants.image_read(self.sst1)
-                moving = ants.resample_image(moving,fixed.shape,True,0)
-                ants.image_write(moving, self.sst1_resampled)
+                resampled_img = image.resampled_to_img(self.t1nii, self.sstemplate)
+                resampled_img.to_filename(self.sst1_resampled)
                 self.t1nii = self.sst1_resampled
                 
                 #resample non skull stripped
                 unsst1prefix = self.unsst1.split('/')[-1].split('.')[0] + "_resampled.nii.gz"
                 self.unsst1_resampled = os.path.join(self.outpath, unsst1prefix)
-                fixed = ants.image_read(self.sstemplate)
-                moving = ants.image_read(self.unsst1)
-                moving = ants.resample_image(moving,fixed.shape,True,0)
-                ants.image_write(moving, self.unsst1_resampled)
+                resampled_img = image.resampled_to_img(self.unsst1, self.sstemplate)
+                resampled_img.to_filename(self.unsst1_resampled)
                 self.unsst1 = self.unsst1_resampled
                           
                 #resample binary mask
                 self.maskbinaryfile_resampled=self.maskbinaryfile + "_resampled"
                 self.maskbinaryfilepath_resampled=self.maskbinaryfile + "_resampled.nii.gz"
-                fixed = ants.image_read(self.sstemplate)
-                moving = ants.image_read(self.maskbinaryfilepath)
-                moving = ants.resample_image(moving,fixed.shape,True,0)
-                ants.image_write(moving, self.maskbinaryfilepath_resampled)
+                resampled_img = image.resampled_to_img(self.maskbinaryfilepath, self.sstemplate)
+                resampled_img.to_filename(self.maskbinaryfilepath_resampled)
                 self.maskbinaryfile = self.maskbinaryfile_resampled
                 self.maskbinaryfilepath = self.maskbinaryfilepath_resampled
                 
@@ -892,7 +885,7 @@ class RestPipe:
                     moving = ants.image_read(self.meanfuncbrain) #mean func
                     fixed=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
-                    tx_func2template = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff')
+                    tx_func2template = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBoldAff')
                     
                     #then apply, as for some reason it doesn't output 4D data above
                     logging.info('Normalizing func')
@@ -1050,7 +1043,7 @@ class RestPipe:
                     fixed = ants.image_read(self.meanfuncbrain) #mean func
                     moving=ants.image_read(self.sstemplate)
                     moving=ants.resample_image(moving,fixed.shape,True,0)
-                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SynBoldAff', outprefix = os.path.join(self.regoutpath, 'ants_'))
+                    tx_template2func = ants.registration(fixed=fixed, moving=moving, type_of_transform='SyNBoldAff', outprefix = os.path.join(self.regoutpath, 'ants_'))
                     templatenormalizedimg = tx_template2func['warpedmovout']
                     ants.image_write(templatenormalizedimg, self.templatenormalized)
                     
@@ -1420,11 +1413,9 @@ class RestPipe:
             if self.resamplet1 == 'yes':
                 if self.sst1_resampled is None:
                     self.sst1_resampled = os.path.join(self.outpath, 't1_resampled.nii.gz')
-                if not os.path.join(self.sst1_resampled):
-                    fixed = ants.image_read(self.sstemplate)
-                    moving = ants.image_read(self.sst1)
-                    moving = ants.resample_image(moving,fixed.shape,True,0)
-                    ants.image_write(moving, self.sst1_resampled) 
+                if not os.path.join(self.sst1_resampled):                    
+                    resampled_img = image.resampled_to_img(self.sst1, self.sstemplate)
+                    resampled_img.to_filename(self.sst1_resampled)
                 logging.info('Running segmentation on resampled T1 image.')
                 runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_resampled))
             elif self.resamplet1 == 'no':
