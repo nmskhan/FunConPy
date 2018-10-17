@@ -118,7 +118,6 @@ parser.add_argument("--cleanup",  action="store_true", dest="cleanup",help="dele
 parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion'], nargs='*', help="List nuissance regressors separated by space. Default is motion, wm amd csf", metavar="regressors", default=['motion', 'wm', 'csf'])
 
 options = parser.parse_args()
-
 if '-h' in sys.argv:
     parser.print_help()
     raise SystemExit()
@@ -161,7 +160,7 @@ class RestPipe:
             elif i == '11':
                 self.step11()
 
-        if options.cleanup is not None:
+        if options.cleanup == True:
             self.cleanup()
 
 
@@ -797,9 +796,10 @@ class RestPipe:
                 logging.info('Resampling T1.')
                 #resample skull stripped
                 t1prefix = self.t1nii.split('/')[-1].split('.')[0] + "_resampled.nii.gz"
-                self.sst1_resampled = os.path.join(self.outpath, t1prefix)
+                self.sst1_resampled = os.path.join(self.outpath, t1prefix)         
                 resampled_img = image.resample_to_img(self.t1nii, self.sstemplate)
                 resampled_img.to_filename(self.sst1_resampled)
+                self.oldt1nii = self.t1nii
                 self.t1nii = self.sst1_resampled
                 
                 if self.unsst1 is not None:
@@ -1207,7 +1207,7 @@ class RestPipe:
                     self.refbrainmasknorm = os.path.join(self.regoutpath, 'templatebrainmasknormalized.nii.gz')
                     self.toclean.append(self.refbrainmasknorm)
                     #apply the transform
-                    logging.info('creating normalized mask %s' % (self.regbrainmasknorm))
+                    logging.info('creating normalized mask %s' % (self.refbrainmasknorm))
                     runproc(str("applywarp --ref=" + self.sst1 + " --in=" + self.refbrainmask + " --out=" + self.refbrainmasknorm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz')))      
                     logging.info('Applying brain mask to normalized template.')
                     if options.skullstrip == 'afni':
@@ -1291,19 +1291,28 @@ class RestPipe:
                     #save transform for segmentation
                     self.segmenttransform=self.t1coregistered + '.mat'
                     
+                    self.templatenormalized=self.templatenormalized + '.nii.gz'
+                    self.templateont1=self.templateont1 + '.nii.gz'
                     #skull strip normalized template for visualization purposes
-                    if os.path.isfile(self.templatenormalized) and os.path.isfile(self.templateont1):
-                        self.templatenormalized=self.templatenormalized + '.nii.gz'
-                        self.templateont1=self.templateont1 + '.nii.gz'
+                    if os.path.isfile(self.templatenormalized) and os.path.isfile(self.templateont1):     
                         self.toclean.append(self.templateont1)
                         self.refbrainmasknorm = os.path.join(self.regoutpath, 'templatebrainmasknormalized.nii.gz')
                         self.toclean.append(self.refbrainmasknorm)
+                        self.refbrainmaskont1 = os.path.join(self.regoutpath, 'templatebrainmaskont1.nii.gz')
+                        self.toclean.append(self.refbrainmaskont1)
                         #apply the transform
                         logging.info('creating normalized mask %s' % (self.refbrainmasknorm))
                         runproc(str("applywarp --ref=" + self.thisnii + " --in=" + self.refbrainmask + " --out=" + self.refbrainmasknorm + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz') + " --postmat=" + self.t1coregistered + '.mat'))      
+                        runproc(str("applywarp --ref=" + self.thisnii + " --in=" + self.refbrainmask + " --out=" + self.refbrainmaskont1 + " --warp=" + os.path.join(self.regoutpath,'standard2t1_fnirt_warpcoef.nii.gz')))
                         logging.info('Applying brain mask to normalized template.')
-                        t1strip = afni.Calc(in_file_a=self.templatenormalized, in_file_b=str(self.refbrainmasknorm + '.nii.gz'), expr='a*step(b)', out_file = self.templatenormalizedbrain, terminal_output='none' )
-                        t1strip.run() 
+                        if options.skullstrip == 'afni':
+                            t1strip = afni.Calc(in_file_a=self.templatenormalized, in_file_b=self.refbrainmasknorm, expr='a*step(b)', out_file = self.templatenormalizedbrain, terminal_output='none' )
+                            t1strip.run()  
+                            t1strip = afni.Calc(in_file_a=self.templateont1, in_file_b=self.refbrainmaskont1, expr='a*step(b)', out_file = self.templateont1brain, terminal_output='none' )
+                            t1strip.run()
+                        elif options.skullstrip == 'bet':
+                            runproc(str("fslmaths " + self.templatenormalized + " -mas " + self.refbrainmasknorm + " " + self.templatenormalizedbrain)) 
+                            runproc(str("fslmaths " + self.templateont1 + " -mas " + self.refbrainmaskont1 + " " + self.templateont1brain))
                     else:
                         logging.info('t1 normalization failed.')
                         raise SystemExit()   
@@ -1407,22 +1416,22 @@ class RestPipe:
         self.wmmask = os.path.join(self.segoutpath, 'mask_pve_2.nii.gz')
         self.masks = [self.csfmask, self.gmmask, self.wmmask]
         
-        if self.sst1 is None and self.t1nii is not None:
-            self.sst1 = self.t1nii
+        if self.oldt1nii is None and self.t1nii is not None:
+            self.oldt1nii = self.t1nii
             
-        if self.sst1 is not None:
+        if self.oldt1nii is not None:
             if self.resamplet1 == 'yes':
                 if self.sst1_resampled is None:
                     self.sst1_resampled = os.path.join(self.outpath, 't1_resampled.nii.gz')                  
                 reference= ants.image_read(self.sstemplate)
-                moving=ants.image_read(self.sst1) #this is the already resampled one from step 4
+                moving=ants.image_read(self.oldt1nii) #this is the already resampled one from step 4
                 resampled=ants.resample_image(moving, reference.shape, True, 0)
                 ants.image_write(resampled, self.sst1_resampled)
                 logging.info('Running segmentation on resampled T1 image.')
                 runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_resampled))
             elif self.resamplet1 == 'no':
                 logging.info('Running segmentation on original T1 image.')
-                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1))       
+                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.oldt1nii))       
             
             for mask in self.masks:
                 if self.space == 'BOLD': 
@@ -1442,8 +1451,8 @@ class RestPipe:
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
                 if self.space == 'T1':
-                    logging.info('Upscaling segmentation.') 
-                    fixed = ants.image_read(self.sst1) #mean func
+                    logging.info('Scaling segmentation.') 
+                    fixed = ants.image_read(self.oldt1nii) #mean func
                     moving=ants.image_read(mask)
                     moving=ants.resample_image(moving, fixed.shape, True, 0)
                     ants.image_write(moving, mask)
@@ -1459,15 +1468,15 @@ class RestPipe:
                         runproc(str("applywarp --ref=" + self.sstemplate + " --in=" + mask + " --out=" + mask + " --warp=" + self.segmenttransform))
         else:
             logging.info('Running segmentation on the template image.')
-            if options.sstemplate is None:
+            if options.sstemplate is not None:
+                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sstemplate)) #change this?
+            else:
                 self.csfmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_0.nii.gz')
                 self.gmmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_1.nii.gz')
                 self.wmmask = os.path.join(self.basedir,'data','MNI152_T1_2mm_brain_pve_2.nii.gz')
                 self.masks = [self.csfmask, self.gmmask, self.wmmask]
-            else:
-                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sstemplate)) #change this?
-            
-            for mask in self.masks:
+            i=0
+            for mask in self.masks:    
                 if self.space == 'BOLD': 
                     logging.info('Converting segmentation to BOLD space.')
                     if self.regmethod == 'ants':
@@ -1480,13 +1489,16 @@ class RestPipe:
                         moving=ants.image_read(mask)
                         moving=ants.resample_image(moving, fixed.shape,True,0)
                         normalized = ants.apply_transforms(fixed=fixed, moving=moving, transformlist=self.segmenttransform)      
-                        i=0
+                    
                         ants.image_write(normalized, os.path.join(self.segoutpath, 'mask_pve_'+str(i)+'.nii.gz'))
-                        i=i+1
-                    elif self.regmethod == 'fsl':
-                        i=0
-                        runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' +  'mask_pve_' + str(i)+ '.nii.gz'))
-                        i=i+1
+
+                    elif self.regmethod == 'fsl':                 
+                        runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + os.path.join(self.segoutpath, 'mask_pve_' + str(i)+ '.nii.gz')))
+                i=i+1
+            if self.space == 'BOLD':
+                self.csfmask = os.path.join(self.segoutpath, 'mask_pve_0.nii.gz')
+                self.gmmask = os.path.join(self.segoutpath, 'mask_pve_1.nii.gz')
+                self.wmmask = os.path.join(self.segoutpath, 'mask_pve_2.nii.gz')               
         
     #regress out nuissance variables
     def step6(self):
