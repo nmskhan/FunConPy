@@ -28,7 +28,7 @@ import argparse
 from argparse import ArgumentParser
 from nilearn import plotting
 from nilearn.image.image import mean_img
-from nilearn import image
+from nilearn.connectome import ConnectivityMeasure
 import matplotlib as plt
 import shutil
 import ants
@@ -1651,6 +1651,10 @@ class RestPipe:
         rtxt = os.path.join(self.outpath,'r_matrix.csv')
         zmat = os.path.join(self.outpath,'zr_matrix.nii.gz')
         ztxt = os.path.join(self.outpath,'zr_matrix.csv')
+        pmat = os.path.join(self.outpath,'p_matrix.nii.gz')
+        ptxt = os.path.join(self.outpath,'p_matrix.csv')
+        tmat = os.path.join(self.outpath,'t_matrix.nii.gz')
+        ttxt = os.path.join(self.outpath,'t_matrix.csv')
         corrtxt = os.path.join(self.outpath,'corrlabel_ts.txt')
         maskname = os.path.join(self.outpath,'mask_matrix.nii.gz')
         graphml = os.path.join(self.outpath,'subject.graphml')
@@ -1664,6 +1668,18 @@ class RestPipe:
                 self.tdim = timeseries.shape[1]
             if self.motionthreshold is not None or self.dvarsthreshold is not None or self.fdthreshold is not None:
                 timeseries = self.scrub_motion_volumes(timeseries)
+
+            #partial and tangent
+            t_timeseries = np.transpose(timeseries)     
+            measure_partialcorr=ConnectivityMeasure(kind='partial correlation')   
+            measure_tan=ConnectivityMeasure(kind='tangent')
+            matrix_partialcorr = measure_partialcorr.fit_transform([t_timeseries])
+            matrix_tan = measure_tan.fit_transform([t_timeseries])
+            
+            matrix_partialcorrs = np.squeeze(matrix_partialcorr)
+            matrix_tans = np.squeeze(matrix_tan)
+            
+            #corr and z fisher corr
             myres = np.corrcoef(timeseries)
             myres = np.nan_to_num(myres)
             
@@ -1676,12 +1692,18 @@ class RestPipe:
             #replace the infs with 0            
             for idx in range(len(infs[0])):
                 zrmaps[infs[0][idx]][infs[1][idx]] = 0
-            
+                
+            #save     
             nibabel.save(nibabel.Nifti1Image(myres,None) ,rmat)
-            nibabel.save(nibabel.Nifti1Image(zrmaps,None) ,zmat)
-            np.savetxt(ztxt,zrmaps,fmt='%f',delimiter=',')
+            nibabel.save(nibabel.Nifti1Image(zrmaps,None) ,zmat)   
+            nibabel.save(nibabel.Nifti1Image(matrix_partialcorrs,None) ,pmat)
+            nibabel.save(nibabel.Nifti1Image(matrix_tans,None) ,tmat)  
             np.savetxt(rtxt,myres,fmt='%f',delimiter=',')
-
+            np.savetxt(ztxt,zrmaps,fmt='%f',delimiter=',')       
+            np.savetxt(ptxt,matrix_partialcorrs,fmt='%f',delimiter=',')
+            np.savetxt(ttxt,matrix_tans,fmt='%f',delimiter=',')           
+                       
+            
             #create a mask for higher level, include everything below diagonal
             mask = np.zeros_like(myres)
             maskx,masky = mask.shape
