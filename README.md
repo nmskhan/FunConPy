@@ -6,7 +6,7 @@ This pipeline is a collection of steps that can be used to process a single subj
 
 # Install
 
-Source files assume you have a working install of Python3, FSL, AFNI, ANTs(optional) and all imported python modules.
+Source files assume you have a working install of Python3, FSL, AFNI, ANTs and all imported python modules.
 Needs a working install of the [BIRN BXH/Xcede tools](https://www.nitrc.org/projects/bxh_xcede_tools/).
 
 
@@ -18,10 +18,10 @@ Python modules are:
 * Nipype
 * Nilearn
 * [ANTsPy](https://github.com/ANTsX/ANTsPy)
-* Pandas (only if using ANTs)
-* Scikit-image (only if using ANTs)
-* Webcolors (only if using ANTs)
-* Plotly (only if using ANTs)   
+* Scikit-image
+* Webcolors 
+* Plotly  
+* Sklearn
 
 
 # Pipeline Details
