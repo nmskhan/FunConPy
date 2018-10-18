@@ -1673,8 +1673,11 @@ class RestPipe:
             t_timeseries = np.transpose(timeseries)     
             measure_partialcorr=ConnectivityMeasure(kind='partial correlation')   
             measure_tan=ConnectivityMeasure(kind='tangent')
-            matrix_partialcorr = measure_partialcorr.fit_transform(t_timeseries)
-            matrix_tan = measure_tan.fit_transform(t_timeseries)
+            matrix_partialcorr = measure_partialcorr.fit_transform([t_timeseries])
+            matrix_tan = measure_tan.fit_transform([t_timeseries])
+            
+            matrix_partialcorrs = np.squeeze(matrix_partialcorr)
+            matrix_tans = np.squeeze(matrix_tan)
             
             #corr and z fisher corr
             myres = np.corrcoef(timeseries)
@@ -1693,12 +1696,12 @@ class RestPipe:
             #save     
             nibabel.save(nibabel.Nifti1Image(myres,None) ,rmat)
             nibabel.save(nibabel.Nifti1Image(zrmaps,None) ,zmat)   
-            nibabel.save(nibabel.Nifti1Image(matrix_partialcorr,None) ,pmat)
-            nibabel.save(nibabel.Nifti1Image(matrix_tan,None) ,tmat)  
+            nibabel.save(nibabel.Nifti1Image(matrix_partialcorrs,None) ,pmat)
+            nibabel.save(nibabel.Nifti1Image(matrix_tans,None) ,tmat)  
             np.savetxt(rtxt,myres,fmt='%f',delimiter=',')
             np.savetxt(ztxt,zrmaps,fmt='%f',delimiter=',')       
-            np.savetxt(ptxt,matrix_partialcorr,fmt='%f',delimiter=',')
-            np.savetxt(ttxt,matrix_tan,fmt='%f',delimiter=',')           
+            np.savetxt(ptxt,matrix_partialcorrs,fmt='%f',delimiter=',')
+            np.savetxt(ttxt,matrix_tans,fmt='%f',delimiter=',')           
                        
             
             #create a mask for higher level, include everything below diagonal
