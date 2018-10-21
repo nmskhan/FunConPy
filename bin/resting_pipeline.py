@@ -94,7 +94,7 @@ parser.add_argument("--flirtcost",  action="store", type=str, choices=['mutualin
 parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data. Default is 'bet'.", metavar="bet/afni", default='bet')
 parser.add_argument("--resample-t1",  action="store",type=str, choices=['yes', 'no'], dest="resamplet1",help="Indicates whether to resample T1 to template resolution before registration. This reduces time and memory need considerably. Default is 'yes'.", metavar="yes/no", default='yes')
 parser.add_argument("--fval",  action="store", type=float, choices=range(0,1), dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
-parser.add_argument("--anatfval",  action="store", type=float, choices=range(0,1), dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
+parser.add_argument("--anatfval",  action="store", type=float, dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
 parser.add_argument("--regmethod",  action="store",type=str, choices=['ants', 'fsl'], dest="regmethod",help="Register and normalize images using 'ants' or 'fsl'. Default is 'fsl'.", metavar="ants/fsl", default='fsl')
 parser.add_argument("--detrend",  action="store", type=int, choices=range(0,4), dest="detrend",help="Polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2", default='2')
 parser.add_argument("--lpfreq",  action="store", type=float, dest="lpfreq",help="Frequency cutoff for lowpass filtering in HZ.  default is .08 Hz", metavar="0.08", default='0.08')
@@ -1653,8 +1653,6 @@ class RestPipe:
         ztxt = os.path.join(self.outpath,'zr_matrix.csv')
         pmat = os.path.join(self.outpath,'p_matrix.nii.gz')
         ptxt = os.path.join(self.outpath,'p_matrix.csv')
-        tmat = os.path.join(self.outpath,'t_matrix.nii.gz')
-        ttxt = os.path.join(self.outpath,'t_matrix.csv')
         corrtxt = os.path.join(self.outpath,'corrlabel_ts.txt')
         maskname = os.path.join(self.outpath,'mask_matrix.nii.gz')
         graphml = os.path.join(self.outpath,'subject.graphml')
@@ -1669,15 +1667,12 @@ class RestPipe:
             if self.motionthreshold is not None or self.dvarsthreshold is not None or self.fdthreshold is not None:
                 timeseries = self.scrub_motion_volumes(timeseries)
 
-            #partial and tangent
+            #partial 
             t_timeseries = np.transpose(timeseries)     
             measure_partialcorr=ConnectivityMeasure(kind='partial correlation')   
-            measure_tan=ConnectivityMeasure(kind='tangent')
-            matrix_partialcorr = measure_partialcorr.fit_transform([t_timeseries])
-            matrix_tan = measure_tan.fit_transform([t_timeseries])
-            
+            matrix_partialcorr = measure_partialcorr.fit_transform([t_timeseries])           
             matrix_partialcorrs = np.squeeze(matrix_partialcorr)
-            matrix_tans = np.squeeze(matrix_tan)
+
             
             #corr and z fisher corr
             myres = np.corrcoef(timeseries)
@@ -1697,12 +1692,9 @@ class RestPipe:
             nibabel.save(nibabel.Nifti1Image(myres,None) ,rmat)
             nibabel.save(nibabel.Nifti1Image(zrmaps,None) ,zmat)   
             nibabel.save(nibabel.Nifti1Image(matrix_partialcorrs,None) ,pmat)
-            nibabel.save(nibabel.Nifti1Image(matrix_tans,None) ,tmat)  
             np.savetxt(rtxt,myres,fmt='%f',delimiter=',')
             np.savetxt(ztxt,zrmaps,fmt='%f',delimiter=',')       
             np.savetxt(ptxt,matrix_partialcorrs,fmt='%f',delimiter=',')
-            np.savetxt(ttxt,matrix_tans,fmt='%f',delimiter=',')           
-                       
             
             #create a mask for higher level, include everything below diagonal
             mask = np.zeros_like(myres)
