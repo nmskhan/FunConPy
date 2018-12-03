@@ -781,9 +781,10 @@ class RestPipe:
                 logging.info('Skull stripping anatomical using ANTs.')
                 self.ants_sstemplate = os.path.join(self.basedir,'data','OASIS_template.nii.gz')
                 self.ants_ssprob = os.path.join(self.basedir,'data','OASIS_template_prob.nii.gz')
-                runproc(str("antsBrainExtraction.sh -d 3 -a " + self.t1nii + " -e " + self.ants_sstemplate + " -m " + self.ants_ssprob + " -o " + newfile))
-                t1maskbinary =afni.Calc(in_file_a=newfile, expr='ispositive(a-0.9999)', out_file = str(self.t1maskbinary + '.nii.gz'), terminal_output='none', args='-datum byte')
-                t1maskbinary.run()
+                self.ants_ssregmask = os.path.join(self.basedir,'data','OASIS_template_regmask.nii.gz')
+                runproc(str("antsBrainExtraction.sh -d 3 -a " + self.t1nii + " -e " + self.ants_sstemplate + " -m " + self.ants_ssprob + " -f " + self.ants_ssregmask + " -o " + newfile))
+                newfile = newfile + 'BrainExtractionBrain'
+                self.t1maskbinary = newfile + 'BrainExtractionMask'
                 
                 
             if os.path.isfile( newfile + ".nii.gz" ):
