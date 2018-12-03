@@ -92,7 +92,7 @@ parser.add_argument("--mcparams",  action="store", type=afile, dest="mcparams",h
 parser.add_argument("--fwhm",  action="store", type=int, dest="fwhm",help="FWHM kernel smoothing in mm (default is 5)", metavar="5", default='5')
 parser.add_argument("--refacpoint",  action="store", type=str, dest="refac",help="AC point of reference image if not using standard MNI brain", metavar="45,63,36", default="45,63,36")
 parser.add_argument("--flirtcost",  action="store", type=str, choices=['mutualinfo', 'corrratio', 'normmi', 'bbr'], dest="flirtcost",help="Cost function for flirt registration of BOLD images. Default is 'corratio'.", metavar="cost function", default='corratio')
-parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni'], dest="skullstrip",help="Use FSL's BET or AFNI's 3dSkullStrip+3dAutomask for skull stripping data. Default is 'bet'.", metavar="bet/afni", default='bet')
+parser.add_argument("--skullstrip",  action="store",type=str, choices=['bet', 'afni', 'ants'], dest="skullstrip",help="Use FSL's BET, AFNI's 3dSkullStrip+3dAutomask or ANTs' for skull stripping data. Default is 'bet'.", metavar="bet/afni", default='bet')
 parser.add_argument("--resample-t1",  action="store",type=str, choices=['yes', 'no'], dest="resamplet1",help="Indicates whether to resample T1 to template resolution before registration. This reduces time and memory need considerably. Default is 'yes'.", metavar="yes/no", default='yes')
 parser.add_argument("--fval",  action="store", type=float, choices=range(0,1), dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
 parser.add_argument("--anatfval",  action="store", type=float, dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
@@ -717,7 +717,7 @@ class RestPipe:
         newprefix = self.prefix + "_brain"
         newfile = os.path.join(self.outpath, newprefix)
 
-        if options.skullstrip == 'afni':
+        if options.skullstrip == 'afni' or options.skullstrip == 'ants':
             logging.info('Skull stripping func using AFNI')
             boldstrip = afni.Automask(in_file=self.thisnii, out_file=os.path.join(self.outpath,'func_brain_mask.nii.gz'), brain_file=str(newfile + '.nii.gz'), clfrac=self.fval, terminal_output='none')
             boldstrip.run()
@@ -777,6 +777,14 @@ class RestPipe:
                 logging.info('Skull stripping anatomical using BET.')
                 runproc(str("bet " + self.t1nii + " " + newfile + " -f " + str(self.anatfval) + " -m"))
                 self.t1maskbinary=newfile + "_mask"
+            elif options.skullstrip == 'ants':
+                logging.info('Skull stripping anatomical using ANTs.')
+                self.ants_sstemplate = os.path.join(self.basedir,'data','OASIS_template.nii.gz')
+                self.ants_ssprob = os.path.join(self.basedir,'data','OASIS_template_prob.nii.gz')
+                runproc(str("antsBrainExtraction.sh -d 3 -a " + self.t1nii + " -e " + self.ants_sstemplate + " -m " + self.ants_ssprob + " -o " + newfile))
+                t1maskbinary =afni.Calc(in_file_a=newfile, expr='ispositive(a-0.9999)', out_file = str(self.t1maskbinary + '.nii.gz'), terminal_output='none', args='-datum byte')
+                t1maskbinary.run()
+                
                 
             if os.path.isfile( newfile + ".nii.gz" ):
                 self.unsst1=self.t1nii
