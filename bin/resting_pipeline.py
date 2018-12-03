@@ -763,7 +763,7 @@ class RestPipe:
                 t1mask.run()
                 t1strip = afni.Calc(in_file_a=self.t1nii, in_file_b=str(self.maskfile + '.nii.gz'),expr='a*step(b)', out_file = str(newfile + '.nii.gz'), terminal_output='none')
                 t1strip.run()
-                t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.t1maskbinary + '.nii.gz'), terminal_output='none')
+                t1maskbinary =afni.Calc(in_file_a=str(self.maskfile + '.nii.gz'), expr='ispositive(a-0.9999)', out_file = str(self.t1maskbinary + '.nii.gz'), terminal_output='none', args='-datum byte')
                 t1maskbinary.run()
             elif options.skullstrip == 'bet':
                 logging.info('Skull stripping anatomical using BET.')
