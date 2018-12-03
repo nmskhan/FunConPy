@@ -18,6 +18,7 @@ import numpy as np
 import numpy.ma
 import nibabel
 from nipype.interfaces import afni
+from nipype.algorithms import confounds
 import os, sys, subprocess
 import string, random
 import re
@@ -96,6 +97,8 @@ parser.add_argument("--resample-t1",  action="store",type=str, choices=['yes', '
 parser.add_argument("--fval",  action="store", type=float, choices=range(0,1), dest="fval",help="fractional intensity threshold value to use while skull stripping bold. BET default is 0.4 [0:1]. 3dAutoMask default is 0.5 [0.1:0.9]. A lower value makes the mask larger.", metavar="0.4")
 parser.add_argument("--anatfval",  action="store", type=float, dest="anatfval",help="fractional intensity threshold value to use while skull stripping ANAT. BET default is 0.5 [0:1]. 3dSkullStrip default is 0.6 [0:1]. A lower value makes the mask larger.", metavar="0.5")
 parser.add_argument("--regmethod",  action="store",type=str, choices=['ants', 'fsl'], dest="regmethod",help="Register and normalize images using 'ants' or 'fsl'. Default is 'fsl'.", metavar="ants/fsl", default='fsl')
+parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion', 'compcor'], nargs='*', help="List nuissance regressors separated by a space. Default is motion, wm amd csf. If CompCor is specified, csf/wm signals will be regressed as part of CompCor.", metavar="regressors", default=['motion', 'wm', 'csf'])
+parser.add_argument("--compcor-components",  action="store", type=int, choices=range(0,10), dest="compcor_components",help="Number of principal components to be used by CompCor.", metavar="5", default='5')
 parser.add_argument("--detrend",  action="store", type=int, choices=range(0,4), dest="detrend",help="Polynomial up to which to detrend signal. Default is 2 (constant + linear + quadratic).", metavar="2", default='2')
 parser.add_argument("--lpfreq",  action="store", type=float, dest="lpfreq",help="Frequency cutoff for lowpass filtering in HZ.  default is .08 Hz", metavar="0.08", default='0.08')
 parser.add_argument("--hpfreq",  action="store", type=float, dest="hpfreq",help="Frequency cutoff for highpass filtering in HZ.  default is .01 Hz", metavar="0.01", default='0.01')
@@ -115,7 +118,6 @@ parser.add_argument("--scrubkeepminvols",  action="store", type=int, dest="scrub
 parser.add_argument("--fcdmthresh",  action="store", type=float, dest="fcdmthresh",help="R-value threshold to be used in functional connectivity density mapping ( step11 ). Default is set to 0.6. Algorithm from Tomasi et al, PNAS(2010), vol. 107, no. 21. Calculates the fcdm of functional data from last completed step, inside a dilated gray matter mask", metavar="THRESH", default=0.6)
 parser.add_argument("--space",  action="store",type=str, choices=['BOLD', 'T1', 'Template'], dest="space",help="Calculate derivatives in 'BOLD', 'T1' or 'Template' space. Default is Template.", metavar="choice of space", default='Template')
 parser.add_argument("--cleanup",  action="store_true", dest="cleanup",help="delete files from intermediate steps?")
-parser.add_argument("--regressors", action="store", dest="regressors", type=str, choices=['wm', 'csf', 'motion'], nargs='*', help="List nuissance regressors separated by space. Default is motion, wm amd csf", metavar="regressors", default=['motion', 'wm', 'csf'])
 
 options = parser.parse_args()
 if '-h' in sys.argv:
@@ -229,12 +231,18 @@ class RestPipe:
 
         #set a basedir where this file is located
         self.basedir = re.sub('\/bin','',os.path.dirname(os.path.realpath(__file__)))
-
+        #grab compcor setting
+        self.compcor_components=options.compcor_components
+        
         #grab detrend setting
         self.detrend = options.detrend
             
         #regressors
         self.regressors = options.regressors
+        if 'compcor' in self.regressors:
+            if 'csf' not in self.regressors or 'wm' not in self.regressors:
+                print("If using CompCor, at least one tissue type must be selected as a regressor.")
+                raise SystemExit()
         
         #grab masks
         self.gmmask = options.gmmask
@@ -1472,7 +1480,6 @@ class RestPipe:
         logging.info('Nuissance regression.')   
         newprefix = self.prefix + '_regress'
         newfile = os.path.join(self.outpath,(newprefix + ".nii.gz"))          
-        
         regressorsstr = " ".join(str(regressor) for regressor in self.regressors)
         print("Will regress " + regressorsstr)
         
@@ -1491,9 +1498,9 @@ class RestPipe:
             if not os.path.isfile(wmout):
                     logging.info('Could not extract WM timeseries, quitting: ' + wmout)
                     raise SystemExit()
-                    
+          
         #Get CSF regressor
-        if 'csf'in self.regressors:       
+        if 'csf' in self.regressors:       
             #mean time series for csf
             csfout = os.path.join(self.outpath,"csf_ts.txt")
             runproc(str("fslmeants -i " + self.thisnii + " -m " + self.csfmask + " -o " + csfout))
@@ -1501,13 +1508,32 @@ class RestPipe:
                     logging.info('Could not extract CSF timeseries, quitting: ' + csfout)
                     raise SystemExit()
         
+        
+        #Get CompCor regressor     
+        if 'compcor' in self.regressors:
+            compcor_masks = []
+            compcor_out = os.path.join(self.outpath,"compcor_ts.txt")
+            if 'wm' in self.regressors:
+                compcor_masks.append(self.wmmask)
+            if 'csf' in self.regressors:
+                compcor_masks.append(self.csfmask)
+            
+            compcor = confounds.CompCor()
+            compcor.inputs.realigned_file=self.thisnii
+            compcor.inputs.components_file=compcor_out
+            compcor.inputs.mask_files=compcor_masks
+            compcor.inputs.merge_method='none'
+            compcor.inputs.num_components=self.compcor_components
+            compcor.inputs.regress_poly_degree=self.detrend
+            compcor.inputs.repetion_time=self.tr_ms/1000
+            compcor.run()
+        
         #One step regression
         logging.info('Combining and regressing nuissance variables')
         self.regressparams = newfile + ".par"
         self.regressparamsmat = newfile +".mat"
         
         #load regressors and combine them
-        
         if 'motion' in self.regressors:
             motion_ts=np.loadtxt(self.mcparams, unpack=True)
             motion_ts=motion_ts.transpose()
@@ -1517,8 +1543,14 @@ class RestPipe:
         if 'csf' in self.regressors:
             csf_ts = np.loadtxt(csfout,unpack=True)
             csf_ts=csf_ts[:,None]
+        if 'compcor' in self.regressors:
+            compcor_ts = np.loadtxt(compcor_out,unpack=True)
+            compcor_ts=compcor_ts[:,None]     
             
-        regressors_ts = np.concatenate([regressor for regressor in [wm_ts, csf_ts, motion_ts] if regressor.size > 0 ], axis=1)
+        if compcor in self.regressors:            
+            regressors_ts = np.concatenate([regressor for regressor in [compcor_ts, motion_ts] if regressor.size > 0 ], axis=1)
+        else:
+            regressors_ts = np.concatenate([regressor for regressor in [wm_ts, csf_ts, motion_ts] if regressor.size > 0 ], axis=1)
         np.savetxt(self.regressparams, regressors_ts)
         
         #convert regressor params to .mat file
@@ -1529,12 +1561,13 @@ class RestPipe:
         newfile = os.path.join(self.outpath, (newprefix + ".nii.gz"))
         runproc(str("fsl_glm -i " + self.thisnii + " -d " + self.regressparamsmat + " --out_res=" + newfile))
         
+        #Check degrees of freedom left
         if self.dofleft == None:
             self.dofleft=int(self.tdim)
         self.dofused = regressors_ts.shape[1]
         self.dofleft = self.dofleft - self.dofused
 
-        
+   
         if os.path.isfile(newfile):
             if self.prevprefix is not None:
                 self.toclean.append(self.thisnii)
