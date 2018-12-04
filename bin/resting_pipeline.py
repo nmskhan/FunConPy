@@ -336,20 +336,20 @@ class RestPipe:
         if options.fval is not None:
             self.fval = options.fval
         else:
-            if options.skullstrip == 'afni':
+            if options.skullstrip == 'afni' or options.skullstrip =='ants':
                 self.fval = 0.5
             elif options.skullstrip == 'bet':
                 self.fval = 0.4
         
         if options.anatfval is not None:
-            self.anatfval = options.anatfval        
+            self.anatfval = options.anatfval 
+            self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
         else:
             if options.skullstrip == 'afni':
                 self.anatfval = 0.6
+                self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
             elif options.skullstrip == 'bet':
                 self.anatfval = 0.5     
-        self.shrinkfac= '-shrink_fac ' + str(self.anatfval)
-
 
         #grab remaining options
         self.segmenttransform = options.segmenttransform
@@ -782,10 +782,9 @@ class RestPipe:
                 self.ants_sstemplate = os.path.join(self.basedir,'data','OASIS_template.nii.gz')
                 self.ants_ssprob = os.path.join(self.basedir,'data','OASIS_template_prob.nii.gz')
                 self.ants_ssregmask = os.path.join(self.basedir,'data','OASIS_template_regmask.nii.gz')
-                runproc(str("antsBrainExtraction.sh -d 3 -a " + self.t1nii + " -e " + self.ants_sstemplate + " -m " + self.ants_ssprob + " -f " + self.ants_ssregmask + " -o " + newfile))
-                newfile = newfile + 'BrainExtractionBrain'
+                runproc(str("antsBrainExtraction.sh -d 3 -a " + self.t1nii + " -e " + self.ants_sstemplate + " -m " + self.ants_ssprob + " -f " + self.ants_ssregmask + " -o " + newfile))            
                 self.t1maskbinary = newfile + 'BrainExtractionMask'
-                
+                newfile = newfile + 'BrainExtractionBrain'
                 
             if os.path.isfile( newfile + ".nii.gz" ):
                 self.unsst1=self.t1nii
@@ -1419,6 +1418,7 @@ class RestPipe:
             
             for mask in self.masks:
                 if self.space == 'BOLD': 
+
                     logging.info('Converting segmentation to BOLD space.') 
                     if self.regmethod == 'ants':
                         self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
@@ -1515,11 +1515,11 @@ class RestPipe:
             runproc(str("fslmeants -i " + self.thisnii + " -m " + self.csfmask + " -o " + csfout))
             if not os.path.isfile(csfout):
                     logging.info('Could not extract CSF timeseries, quitting: ' + csfout)
-                    raise SystemExit()
-        
+                    raise SystemExit()    
         
         #Get CompCor regressor     
         if 'compcor' in self.regressors:
+            logging.info('Running CompCor.')
             compcor_masks = []
             compcor_out = os.path.join(self.outpath,"compcor_ts.txt")
             if 'wm' in self.regressors:
@@ -1534,7 +1534,7 @@ class RestPipe:
             compcor.inputs.merge_method='none'
             compcor.inputs.num_components=self.compcor_components
             compcor.inputs.regress_poly_degree=self.detrend
-            compcor.inputs.repetion_time=self.tr_ms/1000
+            compcor.inputs.repetition_time=self.tr_ms/1000
             compcor.run()
         
         #One step regression
@@ -1544,17 +1544,15 @@ class RestPipe:
         
         #load regressors and combine them
         if 'motion' in self.regressors:
-            motion_ts=np.loadtxt(self.mcparams, unpack=True)
-            motion_ts=motion_ts.transpose()
+            motion_ts=np.loadtxt(self.mcparams)
         if 'wm' in self.regressors:
-            wm_ts = np.loadtxt(wmout,unpack=True)
+            wm_ts = np.loadtxt(wmout)
             wm_ts = wm_ts[:,None]
         if 'csf' in self.regressors:
-            csf_ts = np.loadtxt(csfout,unpack=True)
+            csf_ts = np.loadtxt(csfout)
             csf_ts=csf_ts[:,None]
         if 'compcor' in self.regressors:
-            compcor_ts = np.loadtxt(compcor_out,unpack=True)
-            compcor_ts=compcor_ts[:,None]     
+            compcor_ts = np.loadtxt(compcor_out, skiprows=1)
             
         if compcor in self.regressors:            
             regressors_ts = np.concatenate([regressor for regressor in [compcor_ts, motion_ts] if regressor.size > 0 ], axis=1)
