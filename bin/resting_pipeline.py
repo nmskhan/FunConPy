@@ -1554,7 +1554,7 @@ class RestPipe:
         if 'compcor' in self.regressors:
             compcor_ts = np.loadtxt(compcor_out, skiprows=1)
             
-        if compcor in self.regressors:            
+        if 'compcor' in self.regressors:            
             regressors_ts = np.concatenate([regressor for regressor in [compcor_ts, motion_ts] if regressor.size > 0 ], axis=1)
         else:
             regressors_ts = np.concatenate([regressor for regressor in [wm_ts, csf_ts, motion_ts] if regressor.size > 0 ], axis=1)
