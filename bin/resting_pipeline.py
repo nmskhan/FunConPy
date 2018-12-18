@@ -359,6 +359,7 @@ class RestPipe:
         self.unsst1=None
         self.oldt1nii = None
         self.t1maskbinarypath=None
+        self.sst1_resampled = None
         self.dofleft=None
         self.oldnii = self.thisnii
         self.scrubop = 'or'
@@ -1406,19 +1407,19 @@ class RestPipe:
             if self.resamplet1 == 'yes':
                 if self.sst1_resampled is None:
                     self.sst1_resampled = os.path.join(self.outpath, 't1_resampled.nii.gz')                  
-                reference= ants.image_read(self.sstemplate)
-                moving=ants.image_read(self.oldt1nii) 
-                resampled=ants.resample_image(moving, reference.spacing, False, 0)
-                ants.image_write(resampled, self.sst1_resampled)
+                    reference= ants.image_read(self.sstemplate)
+                    moving=ants.image_read(self.oldt1nii) 
+                    resampled=ants.resample_image(moving, reference.spacing, False, 0)
+                    ants.image_write(resampled, self.sst1_resampled)
+                    self.t1nii=self.sst1_resampled
                 logging.info('Running segmentation on resampled T1 image.')
-                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.sst1_resampled))
+                runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.t1nii))
             elif self.resamplet1 == 'no':
                 logging.info('Running segmentation on original T1 image.')
                 runproc(str("fast -t 1 -n 3 -o " + os.path.join(self.segoutpath,'mask') + " " + self.oldt1nii))       
             
             for mask in self.masks:
                 if self.space == 'BOLD': 
-
                     logging.info('Converting segmentation to BOLD space.') 
                     if self.regmethod == 'ants':
                         self.meanfuncbrain = os.path.join(self.outpath,'mean_func_brain.nii.gz')
@@ -1435,11 +1436,7 @@ class RestPipe:
                     elif self.regmethod == 'fsl':
                         runproc(str('flirt -ref ' + self.oldnii + ' -in ' + mask + ' -applyxfm -init ' + self.segmenttransform + ' -out ' + mask ))
                 if self.space == 'T1':
-                    logging.info('Scaling segmentation.') 
-                    fixed = ants.image_read(self.t1nii) #mean func
-                    moving=ants.image_read(mask)
-                    moving=ants.resample_image(moving, fixed.shape, True, 0)
-                    ants.image_write(moving, mask)
+                    pass                  
                 if self.space == 'Template':
                     logging.info('Converting segmentation to Template space.')
                     if self.regmethod == 'ants':
