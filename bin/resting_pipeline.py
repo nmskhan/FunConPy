@@ -38,7 +38,7 @@ logging.basicConfig(format='%(asctime)s %(message)s ', datefmt='%m/%d/%Y %I:%M:%
 
 def runproc(string):
      logging.info('running: ' + string)
-     subprocess.Popen(string,shell=True).wait()
+     subprocess.Popen(string,shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
 
 def afile(string):
     if not os.path.isfile(string):
