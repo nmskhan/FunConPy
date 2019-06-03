@@ -780,9 +780,9 @@ class RestPipe:
                 self.t1maskbinary=newfile + "_mask"
             elif options.skullstrip == 'ants':
                 logging.info('Skull stripping anatomical using ANTs.')
-                self.ants_sstemplate = os.path.join(self.basedir,'data','OASIS_template.nii.gz')
-                self.ants_ssprob = os.path.join(self.basedir,'data','OASIS_template_prob.nii.gz')
-                self.ants_ssregmask = os.path.join(self.basedir,'data','OASIS_template_regmask.nii.gz')
+                self.ants_sstemplate = os.path.join(self.basedir,'data','KirbyMM_template.nii.gz')
+                self.ants_ssprob = os.path.join(self.basedir,'data','KirbyMM_template_prob.nii.gz')
+                self.ants_ssregmask = os.path.join(self.basedir,'data','KirbyMM_template_regmask.nii.gz')
                 runproc(str("antsBrainExtraction.sh -d 3 -a " + self.t1nii + " -e " + self.ants_sstemplate + " -m " + self.ants_ssprob + " -f " + self.ants_ssregmask + " -o " + newfile))            
                 self.t1maskbinary = newfile + 'BrainExtractionMask'
                 newfile = newfile + 'BrainExtractionBrain'
